@@ -1,0 +1,77 @@
+{
+  "name": "labeler-app-electron",
+  "version": "1.0.0",
+  "description": "Electron-based physiological waveform labeling application",
+  "main": "src/main/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "build": "electron-builder build --win",
+    "build:all": "electron-builder build -mwl",
+    "package": "electron-builder build --dir"
+  },
+  "keywords": [
+    "electron",
+    "physiological",
+    "waveform",
+    "labeling",
+    "medical"
+  ],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "electron": "^40.0.0",
+    "electron-builder": "^26.5.0"
+  },
+  "dependencies": {
+    "electron-updater": "^6.7.3",
+    "python-shell": "^5.0.0"
+  },
+  "build": {
+    "appId": "com.labeler.app",
+    "productName": "Labeler App",
+    "directories": {
+      "buildResources": "build",
+      "output": "dist"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "OWNER",
+      "repo": "REPO_NAME"
+    },
+    "files": [
+      "src/**/*",
+      "backend/**/*",
+      "requirements.txt",
+      "!.env/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "python_dist",
+        "to": "python",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "build/icon.ico",
+      "signAndEditExecutable": false
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "icon": "build/icon.icns"
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "icon": "build/icon.png"
+    }
+  }
+}

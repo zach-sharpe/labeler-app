@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.plot.ly; style-src 'self' 'unsafe-inline'; img-src 'self' data:;">
+  <title>Labeler App</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+</head>
+<body>
+  <div class="app-container">
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-resize-handle" id="sidebar-resize-handle"></div>
+      <div class="sidebar-header">
+        <h1>Labeler</h1>
+      </div>
+
+      <!-- Tab Navigation -->
+      <div class="tab-nav">
+        <button class="tab-btn active" data-tab="file">File & Setup</button>
+        <button class="tab-btn" data-tab="labeling">Labeling</button>
+        <button class="tab-btn" data-tab="signals">Signals</button>
+        <button class="tab-btn" data-tab="experimental">Experimental</button>
+        <button class="tab-btn" data-tab="settings">Settings</button>
+      </div>
+
+      <div class="sidebar-content">
+        <!-- Tab 1: File & Setup -->
+        <div id="tab-file" class="tab-panel active">
+          <!-- Folder Selection -->
+          <div class="control-group">
+            <label>Data Folder:</label>
+            <button id="select-folder-btn" class="btn btn-primary">Select Folder</button>
+            <span id="folder-path" class="folder-path">No folder selected</span>
+          </div>
+
+          <!-- File Selection -->
+          <div class="control-group">
+            <label for="file-dropdown">Patient File:</label>
+            <select id="file-dropdown" class="dropdown" disabled>
+              <option value="">Select a file...</option>
+            </select>
+            <button id="done-toggle-btn" class="btn btn-done" disabled>Mark as Done</button>
+          </div>
+
+          <!-- Labeler Name -->
+          <div class="control-group">
+            <label for="labeler-name">Labeler Name:</label>
+            <input type="text" id="labeler-name" value="labeler1" class="input">
+          </div>
+
+          <!-- Segment Navigation -->
+          <div class="control-group">
+            <label>Segment Navigation:</label>
+            <div class="segment-nav">
+              <button id="prev-segment" class="btn btn-nav" disabled>← Previous (A)</button>
+              <span id="segment-info">0 / 0</span>
+              <button id="next-segment" class="btn btn-nav" disabled>Next (D) →</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab 2: Labeling -->
+        <div id="tab-labeling" class="tab-panel">
+          <!-- Label Type Selection -->
+          <div class="control-group">
+            <label>Label Type:</label>
+            <div class="label-type-buttons">
+              <button id="label-comp-sys" class="btn btn-label active" data-label="compression_systolic_points">
+                Compression Systolic (W)
+              </button>
+              <button id="label-comp-dia" class="btn btn-label" data-label="compression_diastolic_points">
+                Compression Diastolic
+              </button>
+              <button id="label-spon-sys" class="btn btn-label" data-label="spontaneous_systolic_points">
+                Spontaneous Systolic (S)
+              </button>
+              <button id="label-spon-dia" class="btn btn-label" data-label="spontaneous_diastolic_points">
+                Spontaneous Diastolic
+              </button>
+            </div>
+          </div>
+
+          <!-- Label Counts -->
+          <div class="control-group">
+            <div id="label-counts" class="label-counts">
+              <div>Compression Systolic: <span id="count-comp-sys">0</span></div>
+              <div>Compression Diastolic: <span id="count-comp-dia">0</span></div>
+              <div>Spontaneous Systolic: <span id="count-spon-sys">0</span></div>
+              <div>Spontaneous Diastolic: <span id="count-spon-dia">0</span></div>
+            </div>
+          </div>
+
+          <!-- Automated Peak Finding -->
+          <div class="control-group">
+            <label>Automated Peak Finding:</label>
+            <button id="find-comp-sys-btn" class="btn btn-action" disabled>Find Compression Systolic</button>
+            <button id="find-spon-sys-btn" class="btn btn-action" disabled>Find Spontaneous Systolic</button>
+            <button id="find-spon-dia-btn" class="btn btn-action" disabled>Find Spontaneous Diastolic</button>
+            <button id="find-onset-btn" class="btn btn-action" disabled>Find Onset Compression</button>
+            <div class="onset-params">
+              <div class="onset-param-input">
+                <label for="onset-window">Window:</label>
+                <input type="number" id="onset-window" value="30" min="1" max="100" class="input input-small">
+              </div>
+              <div class="onset-param-input">
+                <label for="onset-offset">Offset:</label>
+                <input type="number" id="onset-offset" value="10" min="0" max="50" class="input input-small">
+              </div>
+            </div>
+          </div>
+
+          <!-- Label Management -->
+          <div class="control-group">
+            <label>Label Management:</label>
+            <button id="erase-labels-btn" class="btn btn-action" disabled>Erase Current Type Labels</button>
+          </div>
+
+          <!-- Region Highlighting -->
+          <div class="control-group">
+            <label>Region Highlighting:</label>
+            <button id="toggle-region-btn" class="btn btn-action" disabled>
+              Select Region on ART
+            </button>
+            <button id="clear-regions-btn" class="btn btn-action" disabled>
+              Clear All Regions
+            </button>
+            <div id="region-info" class="region-info"></div>
+          </div>
+
+          <!-- Actions -->
+          <div class="control-group">
+            <button id="save-labels-btn" class="btn btn-action btn-save" disabled>Save Labels</button>
+          </div>
+
+          <!-- Save Status -->
+          <div class="control-group">
+            <span id="save-status" class="save-status"></span>
+          </div>
+        </div>
+
+        <!-- Tab 3: Signals -->
+        <div id="tab-signals" class="tab-panel">
+          <!-- Signal Toggle Buttons -->
+          <div class="control-group">
+            <label>Visible Signals:</label>
+            <div class="signal-toggles" id="signal-toggles">
+              <!-- Signal buttons will be dynamically added here -->
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab 4: Experimental -->
+        <div id="tab-experimental" class="tab-panel">
+          <div class="control-group">
+            <h3>Upslope Detection</h3>
+            <p class="help-text">Find where the first derivative rises above a threshold.</p>
+          </div>
+
+          <!-- Threshold Method -->
+          <div class="control-group">
+            <label for="upslope-method">Threshold Method:</label>
+            <select id="upslope-method" class="dropdown">
+              <option value="percentile">Percentile</option>
+              <option value="std">Mean + N×Std</option>
+              <option value="fixed">Fixed Value</option>
+            </select>
+          </div>
+
+          <!-- Threshold Value -->
+          <div class="control-group">
+            <label for="upslope-threshold" id="upslope-threshold-label">Percentile (0-100):</label>
+            <input type="number" id="upslope-threshold" value="75" class="input input-small">
+          </div>
+
+          <!-- Distance Filters -->
+          <div class="control-group">
+            <label for="upslope-min-distance">Min Distance from Systolic:</label>
+            <input type="number" id="upslope-min-distance" value="0" min="0" max="500" class="input input-small">
+          </div>
+
+          <div class="control-group">
+            <label for="upslope-max-distance">Max Distance from Systolic:</label>
+            <input type="number" id="upslope-max-distance" value="50" min="0" max="500" class="input input-small">
+            <p class="help-text">Set both to 0 to disable filtering</p>
+          </div>
+
+          <!-- Label Type -->
+          <div class="control-group">
+            <label for="upslope-label-type">Label As:</label>
+            <select id="upslope-label-type" class="dropdown">
+              <option value="compression_diastolic_points">Compression Diastolic</option>
+              <option value="spontaneous_diastolic_points">Spontaneous Diastolic</option>
+            </select>
+          </div>
+
+          <!-- Action Buttons -->
+          <div class="control-group">
+            <button id="find-upslope-btn" class="btn btn-action" disabled>Find Upslope</button>
+            <button id="erase-upslope-btn" class="btn btn-action" disabled>Erase Upslope Labels</button>
+          </div>
+        </div>
+
+        <!-- Tab 5: Settings -->
+        <div id="tab-settings" class="tab-panel">
+          <div class="control-group">
+            <h3>Application Settings</h3>
+            <p class="help-text">Settings are saved automatically and persist between sessions.</p>
+          </div>
+
+          <!-- Labeler Name -->
+          <div class="control-group">
+            <label for="settings-labeler-name">Labeler Name:</label>
+            <input type="text" id="settings-labeler-name" value="labeler1" class="input">
+            <p class="help-text">Your identifier for saved labels</p>
+          </div>
+
+          <!-- Labels Directory -->
+          <div class="control-group">
+            <label for="settings-labels-dir">Labels Directory:</label>
+            <input type="text" id="settings-labels-dir" value="labels" class="input">
+            <p class="help-text">Where label files are saved (relative or absolute path)</p>
+            <button id="browse-labels-dir-btn" class="btn btn-secondary">Browse...</button>
+          </div>
+
+          <!-- Default Data Folder -->
+          <div class="control-group">
+            <label for="settings-data-folder">Default Data Folder:</label>
+            <input type="text" id="settings-data-folder" value="." class="input">
+            <p class="help-text">Default folder for patient data files</p>
+            <button id="browse-data-folder-btn" class="btn btn-secondary">Browse...</button>
+          </div>
+
+          <!-- Actions -->
+          <div class="control-group">
+            <button id="save-settings-btn" class="btn btn-primary">Save Settings</button>
+            <button id="reset-settings-btn" class="btn btn-secondary">Reset to Defaults</button>
+          </div>
+
+          <!-- Status -->
+          <div class="control-group">
+            <span id="settings-status" class="save-status"></span>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="main-content">
+      <!-- Segment Info Bar -->
+      <div class="segment-info-bar">
+        <span id="segment-display">No file loaded</span>
+        <button id="review-toggle-btn" class="btn btn-review" disabled>Review</button>
+      </div>
+
+      <div class="graph-container">
+        <div id="main-graph"></div>
+      </div>
+
+      <!-- Resizable divider -->
+      <div id="resize-divider" class="resize-divider"></div>
+
+      <!-- Bottom panel -->
+      <div id="bottom-panel" class="bottom-panel">
+        <div class="bottom-panel-content">
+          <h3>X-Axis Range Selector</h3>
+          <div class="timeline-info">
+            <span id="timeline-current">View: 0.00s - 10.00s</span>
+            <span id="timeline-total">Total: 10.00s</span>
+          </div>
+          <div class="timeline-container">
+            <svg id="timeline-svg" class="timeline-svg"></svg>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Hidden input for keyboard shortcuts -->
+  <input type="text" id="keyboard-input" style="position: absolute; opacity: 0; pointer-events: none;">
+
+  <script src="renderer.js"></script>
+</body>
+</html>

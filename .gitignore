@@ -1,0 +1,57 @@
+# Python
+.env/
+__pycache__/
+*.pyc
+*.pyo
+*.spec
+
+# Node.js
+node_modules/
+package-lock.json
+yarn.lock
+
+# Electron build outputs
+dist/
+python_dist/
+
+# PyInstaller build artifacts
+build/
+
+# Sample data (large files)
+sample-data/
+
+# Labels - user-specific data
+labels/
+
+# Debug and log files
+*.log
+
+# Old/archived files
+old/
+
+# Claude Code
+devlog/
+.claude/
+.prompt-logs.jsonl
+tmpclaude-*
+**/tmpclaude-*
+CLAUDE.md
+
+# Runtime config (user-specific)
+config.json
+
+# Temp files
+_ul
+
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+desktop.ini
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
