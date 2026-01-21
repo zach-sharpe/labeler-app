@@ -61,6 +61,14 @@
       "icon": "build/icon.ico",
       "signAndEditExecutable": false
     },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "allowElevation": true,
+      "runAfterFinish": true,
+      "deleteAppDataOnUninstall": false,
+      "include": "build/installer.nsh"
+    },
     "mac": {
       "target": [
         "dmg"

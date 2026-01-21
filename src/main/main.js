@@ -1,10 +1,33 @@
 const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
+const fs = require('fs');
 const { autoUpdater } = require('electron-updater');
 const PythonBridge = require('./python-bridge');
 
 let mainWindow;
 let pythonBridge;
+
+// Set up update logging
+const updateLogPath = path.join(app.getPath('userData'), 'update.log');
+
+function logUpdate(message) {
+  const timestamp = new Date().toISOString();
+  const logLine = `[${timestamp}] ${message}\n`;
+  console.log('[UPDATE]', message);
+  try {
+    fs.appendFileSync(updateLogPath, logLine);
+  } catch (e) {
+    console.error('Failed to write update log:', e);
+  }
+}
+
+// Configure electron-updater logging
+autoUpdater.logger = {
+  info: (msg) => logUpdate(`INFO: ${msg}`),
+  warn: (msg) => logUpdate(`WARN: ${msg}`),
+  error: (msg) => logUpdate(`ERROR: ${msg}`),
+  debug: (msg) => logUpdate(`DEBUG: ${msg}`)
+};
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -51,11 +74,11 @@ app.whenReady().then(() => {
 
 // Auto-updater event handlers
 autoUpdater.on('checking-for-update', () => {
-  console.log('Checking for updates...');
+  logUpdate('Checking for updates...');
 });
 
 autoUpdater.on('update-available', (info) => {
-  console.log('Update available:', info.version);
+  logUpdate(`Update available: ${info.version}`);
   dialog.showMessageBox(mainWindow, {
     type: 'info',
     title: 'Update Available',
@@ -63,16 +86,17 @@ autoUpdater.on('update-available', (info) => {
   });
 });
 
-autoUpdater.on('update-not-available', () => {
-  console.log('No updates available.');
+autoUpdater.on('update-not-available', (info) => {
+  logUpdate(`No updates available. Current version: ${app.getVersion()}`);
 });
 
 autoUpdater.on('download-progress', (progress) => {
-  console.log(`Download progress: ${Math.round(progress.percent)}%`);
+  logUpdate(`Download progress: ${Math.round(progress.percent)}% (${progress.transferred}/${progress.total} bytes)`);
 });
 
 autoUpdater.on('update-downloaded', (info) => {
-  console.log('Update downloaded:', info.version);
+  logUpdate(`Update downloaded: ${info.version}`);
+  logUpdate(`Update file path: ${info.downloadedFile || 'unknown'}`);
   dialog.showMessageBox(mainWindow, {
     type: 'info',
     title: 'Update Ready',
@@ -80,20 +104,37 @@ autoUpdater.on('update-downloaded', (info) => {
     buttons: ['Restart Now', 'Later']
   }).then((result) => {
     if (result.response === 0) {
+      logUpdate('User clicked Restart Now');
+      logUpdate('Stopping Python bridge...');
       // Stop Python bridge before quitting to prevent "cannot be closed" error
       if (pythonBridge) {
         pythonBridge.stop();
       }
-      // Small delay to ensure process is terminated
+      logUpdate('Python bridge stopped');
+
+      // Close all windows to release file handles
+      logUpdate('Destroying all windows...');
+      BrowserWindow.getAllWindows().forEach(win => {
+        win.destroy();
+      });
+      logUpdate('Windows destroyed');
+
+      // Longer delay to ensure all processes and handles are released
+      logUpdate('Waiting 1500ms before quitAndInstall...');
       setTimeout(() => {
-        autoUpdater.quitAndInstall(false, true);
-      }, 500);
+        logUpdate('Calling quitAndInstall(true, true)...');
+        // isSilent=true to avoid showing installer UI, isForceRunAfter=true to restart app
+        autoUpdater.quitAndInstall(true, true);
+      }, 1500);
+    } else {
+      logUpdate('User clicked Later - update deferred');
     }
   });
 });
 
 autoUpdater.on('error', (error) => {
-  console.error('Auto-updater error:', error);
+  logUpdate(`ERROR: ${error.message}`);
+  logUpdate(`Error stack: ${error.stack}`);
 });
 
 app.on('window-all-closed', () => {
