@@ -80,7 +80,14 @@ autoUpdater.on('update-downloaded', (info) => {
     buttons: ['Restart Now', 'Later']
   }).then((result) => {
     if (result.response === 0) {
-      autoUpdater.quitAndInstall();
+      // Stop Python bridge before quitting to prevent "cannot be closed" error
+      if (pythonBridge) {
+        pythonBridge.stop();
+      }
+      // Small delay to ensure process is terminated
+      setTimeout(() => {
+        autoUpdater.quitAndInstall(false, true);
+      }, 500);
     }
   });
 });

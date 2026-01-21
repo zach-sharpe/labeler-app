@@ -138,9 +138,24 @@ class PythonBridge {
           }
         });
       } else {
-        // Child process has .kill() method
-        this.pythonProcess.kill();
+        // On Windows, kill() with SIGTERM doesn't work reliably
+        // Use taskkill to force-terminate the process tree
+        if (process.platform === 'win32') {
+          const pid = this.pythonProcess.pid;
+          if (pid) {
+            try {
+              // Force kill the process and its children
+              require('child_process').execSync(`taskkill /pid ${pid} /T /F`, { stdio: 'ignore' });
+            } catch (e) {
+              // Process may already be dead, ignore errors
+              console.log('taskkill finished (process may already be terminated)');
+            }
+          }
+        } else {
+          this.pythonProcess.kill('SIGKILL');
+        }
       }
+      this.pythonProcess = null;
     }
   }
 
