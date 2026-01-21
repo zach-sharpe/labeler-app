@@ -456,6 +456,12 @@ body {
   min-height: 0;
 }
 
+/* Custom small crosshair cursor for the plot area */
+#main-graph .plotly .draglayer,
+#main-graph .plotly .nsewdrag {
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Cline x1='8' y1='0' x2='8' y2='16' stroke='%23333' stroke-width='1'/%3E%3Cline x1='0' y1='8' x2='16' y2='8' stroke='%23333' stroke-width='1'/%3E%3C/svg%3E") 8 8, crosshair;
+}
+
 /* Resize divider */
 .resize-divider {
   height: 6px;

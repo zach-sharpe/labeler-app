@@ -26,8 +26,7 @@ const state = {
   autoSaveTimeout: null  // Timeout ID for debounced auto-save
 };
 
-// Legacy defaults - will be overridden by metadata from file
-const TOLERANCE = 10;
+const TOLERANCE = 5;  // Tolerance in samples for peak detection/deletion
 
 // Color scheme for labels (matching Dash app)
 const LABEL_COLORS = {
