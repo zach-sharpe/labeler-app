@@ -29,6 +29,9 @@ autoUpdater.logger = {
   debug: (msg) => logUpdate(`DEBUG: ${msg}`)
 };
 
+// Disable auto install on quit - we'll control this manually
+autoUpdater.autoInstallOnAppQuit = false;
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1400,
@@ -105,27 +108,29 @@ autoUpdater.on('update-downloaded', (info) => {
   }).then((result) => {
     if (result.response === 0) {
       logUpdate('User clicked Restart Now');
+
+      // Step 1: Stop Python bridge
       logUpdate('Stopping Python bridge...');
-      // Stop Python bridge before quitting to prevent "cannot be closed" error
       if (pythonBridge) {
         pythonBridge.stop();
       }
-      logUpdate('Python bridge stopped');
+      logUpdate('Python bridge stop called');
 
-      // Close all windows to release file handles
+      // Step 2: Close all windows to release file handles
       logUpdate('Destroying all windows...');
       BrowserWindow.getAllWindows().forEach(win => {
         win.destroy();
       });
       logUpdate('Windows destroyed');
 
-      // Longer delay to ensure all processes and handles are released
-      logUpdate('Waiting 1500ms before quitAndInstall...');
+      // Step 3: Wait for everything to clean up, then call quitAndInstall
+      // quitAndInstall with isSilent=false shows the installer UI (better for debugging)
+      // isForceRunAfter=true restarts the app after install
+      logUpdate('Waiting 2000ms for cleanup...');
       setTimeout(() => {
-        logUpdate('Calling quitAndInstall(true, true)...');
-        // isSilent=true to avoid showing installer UI, isForceRunAfter=true to restart app
-        autoUpdater.quitAndInstall(true, true);
-      }, 1500);
+        logUpdate('Calling quitAndInstall(false, true)...');
+        autoUpdater.quitAndInstall(false, true);
+      }, 2000);
     } else {
       logUpdate('User clicked Later - update deferred');
     }
