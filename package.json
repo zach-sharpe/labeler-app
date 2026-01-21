@@ -29,7 +29,7 @@
   },
   "build": {
     "appId": "com.labeler.app",
-    "productName": "Labeler App",
+    "productName": "LabelerApp",
     "directories": {
       "buildResources": "build",
       "output": "dist"
@@ -60,6 +60,9 @@
       ],
       "icon": "build/icon.ico",
       "signAndEditExecutable": false
+    },
+    "nsis": {
+      "artifactName": "${productName}-Setup-${version}.${ext}"
     },
     "mac": {
       "target": [
