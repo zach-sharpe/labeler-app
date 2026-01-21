@@ -1,6 +1,6 @@
 {
   "name": "labeler-app-electron",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Electron-based physiological waveform labeling application",
   "main": "src/main/main.js",
   "scripts": {

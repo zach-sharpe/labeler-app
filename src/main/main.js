@@ -39,9 +39,9 @@ app.whenReady().then(() => {
 
   // Check for updates (skip in dev mode)
   // TEMPORARILY DISABLED - uncomment to re-enable auto-updates
-  // if (!process.argv.includes('--dev')) {
-  //   autoUpdater.checkForUpdatesAndNotify();
-  // }
+  if (!process.argv.includes('--dev')) {
+    autoUpdater.checkForUpdatesAndNotify();
+   }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
