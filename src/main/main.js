@@ -204,6 +204,19 @@ ipcMain.handle('toggle-done-file', async (event, filename, labelerName, labelsDi
   }
 });
 
+// Load review files (files with any segment marked for review)
+ipcMain.handle('load-review-files', async (event, labelerName, labelsDir) => {
+  try {
+    const reviewFiles = await pythonBridge.call('load_review_files', {
+      labeler_name: labelerName,
+      labels_directory: labelsDir
+    });
+    return { success: true, review_files: reviewFiles };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
 // Find peaks
 ipcMain.handle('find-peaks', async (event, signalData, segmentIndex) => {
   try {
@@ -310,4 +323,9 @@ ipcMain.handle('save-config', async (event, config) => {
     console.error('Error saving config:', error);
     return { success: false, error: error.message };
   }
+});
+
+// Get app version
+ipcMain.handle('get-app-version', async () => {
+  return app.getVersion();
 });

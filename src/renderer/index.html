@@ -15,6 +15,7 @@
       <div class="sidebar-resize-handle" id="sidebar-resize-handle"></div>
       <div class="sidebar-header">
         <h1>Labeler</h1>
+        <span id="app-version" class="app-version"></span>
       </div>
 
       <!-- Tab Navigation -->
@@ -43,6 +44,7 @@
               <option value="">Select a file...</option>
             </select>
             <button id="done-toggle-btn" class="btn btn-done" disabled>Mark as Done</button>
+            <button id="review-toggle-btn" class="btn btn-review" disabled>Review</button>
           </div>
 
           <!-- Labeler Name -->
@@ -251,8 +253,8 @@
     <main class="main-content">
       <!-- Segment Info Bar -->
       <div class="segment-info-bar">
+        <span id="patient-id-display"></span>
         <span id="segment-display">No file loaded</span>
-        <button id="review-toggle-btn" class="btn btn-review" disabled>Review</button>
       </div>
 
       <div class="graph-container">

@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   saveLabels: (filename, labelerName, labels, labelsDir) => ipcRenderer.invoke('save-labels', filename, labelerName, labels, labelsDir),
   loadDoneFiles: (labelerName, labelsDir) => ipcRenderer.invoke('load-done-files', labelerName, labelsDir),
   toggleDoneFile: (filename, labelerName, labelsDir) => ipcRenderer.invoke('toggle-done-file', filename, labelerName, labelsDir),
+  loadReviewFiles: (labelerName, labelsDir) => ipcRenderer.invoke('load-review-files', labelerName, labelsDir),
 
   // Signal processing
   findPeaks: (signalData, segmentIndex) => ipcRenderer.invoke('find-peaks', signalData, segmentIndex),
@@ -22,5 +23,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Configuration
   loadConfig: () => ipcRenderer.invoke('load-config'),
-  saveConfig: (config) => ipcRenderer.invoke('save-config', config)
+  saveConfig: (config) => ipcRenderer.invoke('save-config', config),
+
+  // App info
+  getAppVersion: () => ipcRenderer.invoke('get-app-version')
 });

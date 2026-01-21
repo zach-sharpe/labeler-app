@@ -313,6 +313,40 @@ def toggle_done_file(params):
 
     return {"success": True, "is_done": is_done, "done_files": done_files}
 
+def load_review_files(params):
+    """Load list of files that have any segment marked for review for a labeler."""
+    labeler_name = params['labeler_name']
+    # Use passed labels_directory if provided, otherwise fall back to config
+    labels_dir = params.get('labels_directory', LABELS_DIR)
+    labeler_dir = os.path.join(labels_dir, labeler_name)
+
+    review_files = []
+
+    if not os.path.exists(labeler_dir):
+        return review_files
+
+    # Scan all label JSON files in the labeler's directory
+    for filename in os.listdir(labeler_dir):
+        if filename.endswith('.json') and filename != 'done_files.json':
+            label_file = os.path.join(labeler_dir, filename)
+            try:
+                with open(label_file, 'r') as f:
+                    labels = json.load(f)
+                    # Check if any segment has review: true
+                    for segment_id, segment_data in labels.items():
+                        if isinstance(segment_data, dict) and segment_data.get('review', False):
+                            # Add the original file name (with extension)
+                            # The label file is named without extension, need to find actual file
+                            base_name = filename[:-5]  # Remove .json
+                            # Return the base name - frontend will match against h5/hdf5 files
+                            review_files.append(base_name)
+                            break  # Once we find one review segment, file is marked
+            except Exception as e:
+                log_error(f"Error reading label file {filename}: {e}")
+
+    return review_files
+
+
 def find_peaks(params):
     """Find peaks in signal data using scipy.signal.find_peaks."""
     signal_data = params['signal_data']
@@ -505,6 +539,7 @@ METHODS = {
     'save_labels': save_labels,
     'load_done_files': load_done_files,
     'toggle_done_file': toggle_done_file,
+    'load_review_files': load_review_files,
     'find_peaks': find_peaks,
     'get_segment': get_segment,
     'calculate_derivative': calculate_derivative,

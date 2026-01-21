@@ -7,6 +7,7 @@ const state = {
   annotations: null,  // Store annotations from file
   cprLabels: null,  // Store CPR labels per segment (0=non-CPR, 1=CPR)
   doneFiles: [],  // List of files marked as done
+  reviewFiles: [],  // List of files with segments marked for review
   segments: [],
   currentSegment: 0,
   labels: {},
@@ -40,6 +41,16 @@ const PLOTLY_COLORS = [
   '#1f77b4', '#ff7f0e', '#2ca02c', '#d62728',
   '#9467bd', '#8c564b', '#e377c2', '#7f7f7f'
 ];
+
+// Helper function to strip file extension for matching label files
+function stripExtension(filename) {
+  if (filename.toLowerCase().endsWith('.h5')) {
+    return filename.slice(0, -3);
+  } else if (filename.toLowerCase().endsWith('.hdf5')) {
+    return filename.slice(0, -5);
+  }
+  return filename;
+}
 
 // Helper functions for signal color mapping and ordering
 function getSignalColor(signalName) {
@@ -110,6 +121,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   initTabs();
   setupEventListeners();
   focusKeyboardInput();
+
+  // Load and display app version
+  try {
+    const version = await window.electronAPI.getAppVersion();
+    document.getElementById('app-version').textContent = `v${version}`;
+  } catch (error) {
+    console.error('Error getting app version:', error);
+  }
 
   // Load configuration
   const config = await loadConfig();
@@ -278,6 +297,14 @@ async function loadFilesFromFolder(folderPath) {
       state.doneFiles = [];
     }
 
+    // Load review files for current labeler
+    const reviewResult = await window.electronAPI.loadReviewFiles(state.labelerName, labelsDir);
+    if (reviewResult.success) {
+      state.reviewFiles = reviewResult.review_files || [];
+    } else {
+      state.reviewFiles = [];
+    }
+
     const dropdown = document.getElementById('file-dropdown');
     dropdown.innerHTML = '<option value="">Select a file...</option>';
     filesResult.files.forEach(file => {
@@ -285,9 +312,12 @@ async function loadFilesFromFolder(folderPath) {
       const option = document.createElement('option');
       option.value = file;
       option.textContent = file;
-      // Apply green background if file is done
-      if (state.doneFiles.includes(file)) {
-        option.style.backgroundColor = '#d4edda';
+      // Apply styling based on status (review/red takes priority over done/green)
+      const fileBaseName = stripExtension(file);
+      if (state.reviewFiles.includes(fileBaseName)) {
+        option.style.backgroundColor = '#f8d7da';  // Red for review
+      } else if (state.doneFiles.includes(file)) {
+        option.style.backgroundColor = '#d4edda';  // Green for done
       }
       dropdown.appendChild(option);
     });
@@ -525,9 +555,35 @@ function toggleReview() {
   // Toggle the review flag
   state.labels[segmentId].review = !state.labels[segmentId].review;
 
+  // Update review files list based on whether any segment in current file has review
+  updateReviewFilesState();
+
   // Update button appearance
   updateReviewButton();
+  // Update dropdown to reflect review status
+  updateDropdownDoneStyles();
   markLabelsDirty();
+}
+
+function updateReviewFilesState() {
+  // Check if any segment in the current file's labels has review: true
+  const fileBaseName = stripExtension(state.currentFile);
+  let hasReview = false;
+
+  for (const segmentId in state.labels) {
+    if (state.labels[segmentId] && state.labels[segmentId].review === true) {
+      hasReview = true;
+      break;
+    }
+  }
+
+  // Update the reviewFiles list
+  const index = state.reviewFiles.indexOf(fileBaseName);
+  if (hasReview && index === -1) {
+    state.reviewFiles.push(fileBaseName);
+  } else if (!hasReview && index !== -1) {
+    state.reviewFiles.splice(index, 1);
+  }
 }
 
 function updateDoneButton() {
@@ -556,10 +612,16 @@ function updateDropdownDoneStyles() {
   const dropdown = document.getElementById('file-dropdown');
   const options = dropdown.querySelectorAll('option');
   options.forEach(option => {
-    if (option.value && state.doneFiles.includes(option.value)) {
-      option.style.backgroundColor = '#d4edda';
-    } else {
-      option.style.backgroundColor = '';
+    if (option.value) {
+      const fileBaseName = stripExtension(option.value);
+      // Review (red) takes priority over done (green)
+      if (state.reviewFiles.includes(fileBaseName)) {
+        option.style.backgroundColor = '#f8d7da';  // Red for review
+      } else if (state.doneFiles.includes(option.value)) {
+        option.style.backgroundColor = '#d4edda';  // Green for done
+      } else {
+        option.style.backgroundColor = '';
+      }
     }
   });
 }
@@ -572,6 +634,17 @@ function updateSegmentInfo() {
   let cprStatus = '';
   if (state.cprLabels && state.cprLabels.length > state.currentSegment) {
     cprStatus = state.cprLabels[state.currentSegment] === 1 ? ' (CPR)' : ' (Non-CPR)';
+  }
+
+  // Update the patient ID display
+  const patientIdDisplay = document.getElementById('patient-id-display');
+  if (state.metadata && state.metadata.patient_id) {
+    patientIdDisplay.textContent = `Patient: ${state.metadata.patient_id}`;
+  } else if (state.currentFile) {
+    // Fall back to filename if no patient_id in metadata
+    patientIdDisplay.textContent = `File: ${state.currentFile}`;
+  } else {
+    patientIdDisplay.textContent = '';
   }
 
   // Update the segment display bar at the top
