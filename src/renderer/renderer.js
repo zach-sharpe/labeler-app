@@ -12,6 +12,7 @@ const state = {
   currentSegment: 0,
   labels: {},
   labelerName: 'labeler1',
+  appVersion: 'unknown',  // App version for audit metadata
   currentLabelType: 'compression_systolic_points',
   visibleSignals: new Set(),
   signalNames: [],  // Sorted signal names for display order
@@ -125,6 +126,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Load and display app version
   try {
     const version = await window.electronAPI.getAppVersion();
+    state.appVersion = version;
     document.getElementById('app-version').textContent = `v${version}`;
   } catch (error) {
     console.error('Error getting app version:', error);
@@ -1564,7 +1566,8 @@ async function saveLabels(showStatus = true) {
     state.currentFile,
     state.labelerName,
     state.labels,
-    labelsDir
+    labelsDir,
+    state.appVersion
   );
 
   if (result.success) {

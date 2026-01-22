@@ -250,15 +250,25 @@ def load_labels(params):
 
 def save_labels(params):
     """Save labels for a specific patient file."""
+    from datetime import datetime, timezone
+
     filename = params['filename']
     labeler_name = params['labeler_name']
     labels = params['labels']
+    app_version = params.get('app_version', 'unknown')
     # Use passed labels_directory if provided, otherwise fall back to config
     labels_dir = params.get('labels_directory', LABELS_DIR)
 
     # Create directory if it doesn't exist
     label_dir = os.path.join(labels_dir, labeler_name)
     os.makedirs(label_dir, exist_ok=True)
+
+    # Add/update metadata (doesn't interfere with segment data which uses numeric keys)
+    labels['_metadata'] = {
+        'labeler': labeler_name,
+        'last_updated': datetime.now(timezone.utc).isoformat(),
+        'app_version': app_version
+    }
 
     # Strip .h5/.hdf5 extension for cleaner label file names
     base_filename = strip_hdf5_extension(filename)

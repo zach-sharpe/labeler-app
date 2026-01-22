@@ -10,7 +10,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Label operations
   loadLabels: (filename, labelerName, labelsDir) => ipcRenderer.invoke('load-labels', filename, labelerName, labelsDir),
-  saveLabels: (filename, labelerName, labels, labelsDir) => ipcRenderer.invoke('save-labels', filename, labelerName, labels, labelsDir),
+  saveLabels: (filename, labelerName, labels, labelsDir, appVersion) => ipcRenderer.invoke('save-labels', filename, labelerName, labels, labelsDir, appVersion),
   loadDoneFiles: (labelerName, labelsDir) => ipcRenderer.invoke('load-done-files', labelerName, labelsDir),
   toggleDoneFile: (filename, labelerName, labelsDir) => ipcRenderer.invoke('toggle-done-file', filename, labelerName, labelsDir),
   loadReviewFiles: (labelerName, labelsDir) => ipcRenderer.invoke('load-review-files', labelerName, labelsDir),

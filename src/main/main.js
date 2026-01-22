@@ -201,7 +201,7 @@ ipcMain.handle('load-labels', async (event, filename, labelerName, labelsDir) =>
 });
 
 // Save labels
-ipcMain.handle('save-labels', async (event, filename, labelerName, labels, labelsDir) => {
+ipcMain.handle('save-labels', async (event, filename, labelerName, labels, labelsDir, appVersion) => {
   // Validate labeler name
   const labelerResult = security.validateLabelerName(labelerName);
   if (!labelerResult.valid) {
@@ -225,7 +225,8 @@ ipcMain.handle('save-labels', async (event, filename, labelerName, labels, label
       filename,
       labeler_name: labelerResult.sanitized,
       labels,
-      labels_directory: pathResult.sanitized
+      labels_directory: pathResult.sanitized,
+      app_version: appVersion || 'unknown'
     });
     return { success: true };
   } catch (error) {
