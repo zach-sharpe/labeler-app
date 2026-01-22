@@ -2,6 +2,7 @@ const { PythonShell } = require('python-shell');
 const path = require('path');
 const { app } = require('electron');
 const { spawn } = require('child_process');
+const { isAllowedPythonMethod } = require('./security');
 
 class PythonBridge {
   constructor() {
@@ -148,6 +149,11 @@ class PythonBridge {
     return new Promise((resolve, reject) => {
       if (!this.pythonProcess) {
         return reject(new Error('Python process not started'));
+      }
+
+      // Validate method against whitelist
+      if (!isAllowedPythonMethod(method)) {
+        return reject(new Error(`Method not allowed: ${method}`));
       }
 
       const id = this.messageId++;

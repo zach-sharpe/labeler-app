@@ -2,6 +2,7 @@ const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const { autoUpdater } = require('electron-updater');
 const PythonBridge = require('./python-bridge');
+const security = require('./security');
 
 let mainWindow;
 let pythonBridge;
@@ -13,6 +14,9 @@ function createWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
+      sandbox: true,
+      webSecurity: true,
+      allowRunningInsecureContent: false,
       preload: path.join(__dirname, 'preload.js')
     },
     title: 'Labeler App'
@@ -121,9 +125,16 @@ ipcMain.handle('select-folder', async () => {
 
 // Get CSV files in folder
 ipcMain.handle('get-csv-files', async (event, folderPath) => {
-  console.log('get-csv-files called with folder:', folderPath);
+  // Validate folder path
+  const pathResult = security.validatePath(folderPath);
+  if (!pathResult.valid) {
+    console.error('get-csv-files path validation failed:', pathResult.error);
+    return { success: false, error: pathResult.error };
+  }
+
+  console.log('get-csv-files called with folder:', pathResult.sanitized);
   try {
-    const files = await pythonBridge.call('get_csv_files', { folder: folderPath });
+    const files = await pythonBridge.call('get_csv_files', { folder: pathResult.sanitized });
     console.log('get-csv-files result:', files);
     return { success: true, files };
   } catch (error) {
@@ -134,11 +145,26 @@ ipcMain.handle('get-csv-files', async (event, folderPath) => {
 
 // Load patient file
 ipcMain.handle('load-file', async (event, filename, folderPath) => {
-  console.log('load-file called with:', filename, folderPath);
+  // Validate folder path
+  const pathResult = security.validatePath(folderPath);
+  if (!pathResult.valid) {
+    console.error('load-file path validation failed:', pathResult.error);
+    return { success: false, error: pathResult.error };
+  }
+
+  // Validate filename (no path traversal)
+  if (!filename || typeof filename !== 'string') {
+    return { success: false, error: 'Invalid filename' };
+  }
+  if (filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
+    return { success: false, error: 'Invalid filename: path traversal detected' };
+  }
+
+  console.log('load-file called with:', filename, pathResult.sanitized);
   try {
     const data = await pythonBridge.call('load_patient_file', {
       filename,
-      folder: folderPath
+      folder: pathResult.sanitized
     });
     console.log('load-file result received, columns:', data?.columns);
     return { success: true, data };
@@ -150,11 +176,23 @@ ipcMain.handle('load-file', async (event, filename, folderPath) => {
 
 // Load labels
 ipcMain.handle('load-labels', async (event, filename, labelerName, labelsDir) => {
+  // Validate labeler name
+  const labelerResult = security.validateLabelerName(labelerName);
+  if (!labelerResult.valid) {
+    return { success: false, error: labelerResult.error };
+  }
+
+  // Validate labels directory path
+  const pathResult = security.validatePath(labelsDir);
+  if (!pathResult.valid) {
+    return { success: false, error: pathResult.error };
+  }
+
   try {
     const labels = await pythonBridge.call('load_labels', {
       filename,
-      labeler_name: labelerName,
-      labels_directory: labelsDir
+      labeler_name: labelerResult.sanitized,
+      labels_directory: pathResult.sanitized
     });
     return { success: true, labels };
   } catch (error) {
@@ -164,12 +202,30 @@ ipcMain.handle('load-labels', async (event, filename, labelerName, labelsDir) =>
 
 // Save labels
 ipcMain.handle('save-labels', async (event, filename, labelerName, labels, labelsDir) => {
+  // Validate labeler name
+  const labelerResult = security.validateLabelerName(labelerName);
+  if (!labelerResult.valid) {
+    return { success: false, error: labelerResult.error };
+  }
+
+  // Validate labels directory path
+  const pathResult = security.validatePath(labelsDir);
+  if (!pathResult.valid) {
+    return { success: false, error: pathResult.error };
+  }
+
+  // Validate labels structure
+  const labelsResult = security.validateLabels(labels);
+  if (!labelsResult.valid) {
+    return { success: false, error: labelsResult.error };
+  }
+
   try {
     await pythonBridge.call('save_labels', {
       filename,
-      labeler_name: labelerName,
+      labeler_name: labelerResult.sanitized,
       labels,
-      labels_directory: labelsDir
+      labels_directory: pathResult.sanitized
     });
     return { success: true };
   } catch (error) {
@@ -179,10 +235,22 @@ ipcMain.handle('save-labels', async (event, filename, labelerName, labels, label
 
 // Load done files
 ipcMain.handle('load-done-files', async (event, labelerName, labelsDir) => {
+  // Validate labeler name
+  const labelerResult = security.validateLabelerName(labelerName);
+  if (!labelerResult.valid) {
+    return { success: false, error: labelerResult.error };
+  }
+
+  // Validate labels directory path
+  const pathResult = security.validatePath(labelsDir);
+  if (!pathResult.valid) {
+    return { success: false, error: pathResult.error };
+  }
+
   try {
     const doneFiles = await pythonBridge.call('load_done_files', {
-      labeler_name: labelerName,
-      labels_directory: labelsDir
+      labeler_name: labelerResult.sanitized,
+      labels_directory: pathResult.sanitized
     });
     return { success: true, done_files: doneFiles };
   } catch (error) {
@@ -192,11 +260,23 @@ ipcMain.handle('load-done-files', async (event, labelerName, labelsDir) => {
 
 // Toggle done file
 ipcMain.handle('toggle-done-file', async (event, filename, labelerName, labelsDir) => {
+  // Validate labeler name
+  const labelerResult = security.validateLabelerName(labelerName);
+  if (!labelerResult.valid) {
+    return { success: false, error: labelerResult.error };
+  }
+
+  // Validate labels directory path
+  const pathResult = security.validatePath(labelsDir);
+  if (!pathResult.valid) {
+    return { success: false, error: pathResult.error };
+  }
+
   try {
     const result = await pythonBridge.call('toggle_done_file', {
       filename,
-      labeler_name: labelerName,
-      labels_directory: labelsDir
+      labeler_name: labelerResult.sanitized,
+      labels_directory: pathResult.sanitized
     });
     return { success: true, ...result };
   } catch (error) {
@@ -206,10 +286,22 @@ ipcMain.handle('toggle-done-file', async (event, filename, labelerName, labelsDi
 
 // Load review files (files with any segment marked for review)
 ipcMain.handle('load-review-files', async (event, labelerName, labelsDir) => {
+  // Validate labeler name
+  const labelerResult = security.validateLabelerName(labelerName);
+  if (!labelerResult.valid) {
+    return { success: false, error: labelerResult.error };
+  }
+
+  // Validate labels directory path
+  const pathResult = security.validatePath(labelsDir);
+  if (!pathResult.valid) {
+    return { success: false, error: pathResult.error };
+  }
+
   try {
     const reviewFiles = await pythonBridge.call('load_review_files', {
-      labeler_name: labelerName,
-      labels_directory: labelsDir
+      labeler_name: labelerResult.sanitized,
+      labels_directory: pathResult.sanitized
     });
     return { success: true, review_files: reviewFiles };
   } catch (error) {
@@ -314,10 +406,17 @@ ipcMain.handle('load-config', async () => {
 });
 
 ipcMain.handle('save-config', async (event, config) => {
+  // Validate config structure
+  const configResult = security.validateConfig(config);
+  if (!configResult.valid) {
+    console.error('Config validation failed:', configResult.error);
+    return { success: false, error: configResult.error };
+  }
+
   try {
     const fs = require('fs');
     const configPath = getConfigPath();
-    fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+    fs.writeFileSync(configPath, JSON.stringify(configResult.sanitized, null, 2));
     return { success: true };
   } catch (error) {
     console.error('Error saving config:', error);
