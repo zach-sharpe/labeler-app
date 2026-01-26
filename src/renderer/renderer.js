@@ -540,6 +540,16 @@ function updateReviewButton() {
 function toggleReview() {
   const segmentId = state.currentSegment.toString();
 
+  // Check if file is marked as Done - prevent marking for review if so
+  const isDone = state.currentFile && state.doneFiles.includes(state.currentFile);
+  const currentReviewState = state.labels[segmentId]?.review === true;
+
+  // Only block if trying to SET review (not unset)
+  if (isDone && !currentReviewState) {
+    alert('Cannot mark segment for review: This file is marked as "Done". Please unmark "Done" first.');
+    return;
+  }
+
   // Initialize segment labels if needed
   if (!state.labels[segmentId]) {
     state.labels[segmentId] = {
@@ -562,6 +572,8 @@ function toggleReview() {
 
   // Update button appearance
   updateReviewButton();
+  // Update Done button state (may need to enable/disable based on review status)
+  updateDoneButton();
   // Update dropdown to reflect review status
   updateDropdownDoneStyles();
   markLabelsDirty();
@@ -591,15 +603,44 @@ function updateReviewFilesState() {
 function updateDoneButton() {
   const isDone = state.currentFile && state.doneFiles.includes(state.currentFile);
   const btn = document.getElementById('done-toggle-btn');
+
   if (isDone) {
     btn.classList.add('active');
   } else {
     btn.classList.remove('active');
   }
+  // Note: Button stays enabled so click handler can show popup with review segment info
+}
+
+// Helper function to get list of segment IDs that have review: true
+function getSegmentsWithReview() {
+  const reviewSegments = [];
+  for (const segmentId in state.labels) {
+    if (segmentId === '_metadata') continue;  // Skip metadata key
+    if (state.labels[segmentId] && state.labels[segmentId].review === true) {
+      reviewSegments.push(parseInt(segmentId) + 1);  // Convert to 1-based for display
+    }
+  }
+  return reviewSegments.sort((a, b) => a - b);
 }
 
 async function toggleDone() {
   if (!state.currentFile) return;
+
+  // Check if trying to mark as Done (not already done)
+  const isDone = state.doneFiles.includes(state.currentFile);
+
+  if (!isDone) {
+    // Trying to mark as Done - check for review segments
+    const reviewSegments = getSegmentsWithReview();
+    if (reviewSegments.length > 0) {
+      const segmentList = reviewSegments.length <= 5
+        ? reviewSegments.join(', ')
+        : reviewSegments.slice(0, 5).join(', ') + `, ... (${reviewSegments.length} total)`;
+      alert(`Cannot mark as Done: Segment(s) ${segmentList} flagged for review.`);
+      return;
+    }
+  }
 
   const labelsDir = document.getElementById('settings-labels-dir').value || 'labels';
   const result = await window.electronAPI.toggleDoneFile(state.currentFile, state.labelerName, labelsDir);
