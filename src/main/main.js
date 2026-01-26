@@ -1,11 +1,42 @@
 const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
+const fs = require('fs');
 const { autoUpdater } = require('electron-updater');
 const PythonBridge = require('./python-bridge');
 const security = require('./security');
 
 let mainWindow;
 let pythonBridge;
+
+// Configure auto-updater for private GitHub repo
+// Token is loaded from update-token.txt (created at build time, not committed to repo)
+function loadUpdateToken() {
+  const tokenPaths = [
+    path.join(__dirname, 'update-token.txt'),  // Development
+    path.join(process.resourcesPath, 'update-token.txt')  // Production
+  ];
+
+  for (const tokenPath of tokenPaths) {
+    try {
+      if (fs.existsSync(tokenPath)) {
+        return fs.readFileSync(tokenPath, 'utf8').trim();
+      }
+    } catch (e) {
+      // Continue to next path
+    }
+  }
+  return '';
+}
+
+const GITHUB_TOKEN = loadUpdateToken();
+if (GITHUB_TOKEN) {
+  autoUpdater.requestHeaders = { Authorization: `token ${GITHUB_TOKEN}` };
+  console.log('Auto-updater configured with GitHub token');
+} else {
+  console.log('No GitHub token found - updates from private repo will fail');
+}
+autoUpdater.autoDownload = true;
+autoUpdater.autoInstallOnAppQuit = true;
 
 function createWindow() {
   mainWindow = new BrowserWindow({

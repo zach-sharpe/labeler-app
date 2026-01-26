@@ -9,6 +9,21 @@ echo " Labeler App - Build Script"
 echo "========================================="
 echo ""
 
+# Check for GitHub token (required for auto-updates from private repo)
+if [ -z "$GH_TOKEN" ]; then
+    echo "⚠️  Warning: GH_TOKEN environment variable not set"
+    echo "   Auto-updates will not work for private repo."
+    echo "   Set it with: export GH_TOKEN=your_github_pat"
+    echo ""
+    read -p "Continue without auto-update support? (y/N) " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        exit 1
+    fi
+else
+    echo "✅ GitHub token found - auto-updates will be enabled"
+fi
+
 # Check if PyInstaller is installed
 if ! command -v pyinstaller &> /dev/null; then
     echo "⚠️  PyInstaller not found. Installing..."
@@ -50,9 +65,21 @@ else
     echo "✅ Node modules already installed"
 fi
 
-# Step 3: Build Electron app
+# Step 3: Create update token file (if token provided)
 echo ""
-echo "🔨 Step 3/3: Building Electron app..."
+echo "🔑 Step 3/4: Setting up auto-update token..."
+if [ -n "$GH_TOKEN" ]; then
+    echo "$GH_TOKEN" > src/main/update-token.txt
+    echo "✅ Update token created"
+else
+    # Create empty file to avoid errors
+    echo "" > src/main/update-token.txt
+    echo "⚠️  No token - auto-updates disabled"
+fi
+
+# Step 4: Build Electron app
+echo ""
+echo "🔨 Step 4/4: Building Electron app..."
 
 # Detect platform
 if [[ "$OSTYPE" == "msys" ]] || [[ "$OSTYPE" == "win32" ]]; then
@@ -84,6 +111,9 @@ fi
 echo ""
 echo "To test the app:"
 echo "  npm start"
+# Clean up token file (don't leave it in source)
+rm -f src/main/update-token.txt
+
 echo ""
 echo "To distribute:"
 echo "  1. Find the installer/executable in dist/"

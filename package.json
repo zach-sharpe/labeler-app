@@ -37,13 +37,21 @@
     "publish": {
       "provider": "github",
       "owner": "zach-sharpe",
-      "repo": "labeler-app"
+      "repo": "labeler-app",
+      "private": true
     },
     "files": [
       "src/**/*",
       "backend/**/*",
       "requirements.txt",
-      "!.env/**/*"
+      "!.env/**/*",
+      "!src/main/update-token.txt"
+    ],
+    "extraFiles": [
+      {
+        "from": "src/main/update-token.txt",
+        "to": "resources/update-token.txt"
+      }
     ],
     "extraResources": [
       {

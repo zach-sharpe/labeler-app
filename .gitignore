@@ -1,3 +1,12 @@
+# Patient/waveform data files - NEVER commit these
+*.h5
+*.hdf5
+*.csv
+
+# GitHub token for auto-updates - NEVER commit
+update-token.txt
+**/update-token.txt
+
 # Python
 .env/
 __pycache__/

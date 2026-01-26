@@ -7,6 +7,18 @@ echo  Labeler App - Build Script (Windows)
 echo =========================================
 echo.
 
+REM Check for GitHub token (required for auto-updates from private repo)
+if "%GH_TOKEN%"=="" (
+    echo Warning: GH_TOKEN environment variable not set
+    echo Auto-updates will not work for private repo.
+    echo Set it with: set GH_TOKEN=your_github_pat
+    echo.
+    set /p CONTINUE="Continue without auto-update support? (y/N) "
+    if /i not "%CONTINUE%"=="y" exit /b 1
+) else (
+    echo GitHub token found - auto-updates will be enabled
+)
+
 REM Check if PyInstaller is installed
 pyinstaller --version >nul 2>&1
 if %errorlevel% neq 0 (
@@ -41,9 +53,20 @@ if not exist node_modules (
     echo Node modules already installed
 )
 
-REM Step 3: Build Electron app
+REM Step 3: Create update token file (if token provided)
 echo.
-echo Step 3/3: Building Electron app...
+echo Step 3/4: Setting up auto-update token...
+if not "%GH_TOKEN%"=="" (
+    echo %GH_TOKEN%> src\main\update-token.txt
+    echo Update token created
+) else (
+    echo.> src\main\update-token.txt
+    echo No token - auto-updates disabled
+)
+
+REM Step 4: Build Electron app
+echo.
+echo Step 4/4: Building Electron app...
 call npm run build
 
 echo.
@@ -63,6 +86,9 @@ if exist dist (
 echo.
 echo To test the app:
 echo   npm start
+REM Clean up token file (don't leave it in source)
+if exist src\main\update-token.txt del src\main\update-token.txt
+
 echo.
 echo To distribute:
 echo   1. Find the installer/executable in dist\
