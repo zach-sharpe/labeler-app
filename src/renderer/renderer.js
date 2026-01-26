@@ -25,10 +25,14 @@ const state = {
   viewRangeEnd: 10,   // End of visible x-axis range (in seconds)
   // Auto-save state
   labelsDirty: false,  // True if labels have been modified since last save
-  autoSaveTimeout: null  // Timeout ID for debounced auto-save
+  autoSaveTimeout: null,  // Timeout ID for debounced auto-save
+  // Eraser state
+  eraserActive: false,  // True when shift is held and mouse is down
+  eraserModified: false  // True if eraser removed any points during current drag
 };
 
 const TOLERANCE = 5;  // Tolerance in samples for peak detection/deletion
+const ERASER_TOLERANCE = 8;  // Tolerance in samples for eraser mode
 
 // Color scheme for labels (matching Dash app)
 const LABEL_COLORS = {
@@ -261,6 +265,10 @@ function setupEventListeners() {
 
   // Keyboard shortcuts - use global listener instead of hidden input
   document.addEventListener('keydown', handleKeyboard);
+
+  // Eraser mode: track shift key globally for cursor changes
+  document.addEventListener('keydown', handleEraserKeyDown);
+  document.addEventListener('keyup', handleEraserKeyUp);
 
   // Keep the click handler for backward compatibility but make it less intrusive
   document.addEventListener('click', focusKeyboardInput);
@@ -976,6 +984,16 @@ function updateGraph() {
     // Still keep double-click for deletion
     graphDiv.on('plotly_doubleclick', handleGraphDoubleClick);
 
+    // Eraser mode handlers - use capture phase to intercept before Plotly
+    graphDiv.removeEventListener('mousedown', handleEraserMouseDown, true);
+    graphDiv.addEventListener('mousedown', handleEraserMouseDown, true);
+    graphDiv.removeEventListener('mousemove', handleEraserMouseMove, true);
+    graphDiv.addEventListener('mousemove', handleEraserMouseMove, true);
+    graphDiv.removeEventListener('mouseup', handleEraserMouseUp, true);
+    graphDiv.addEventListener('mouseup', handleEraserMouseUp, true);
+    graphDiv.removeEventListener('mouseleave', handleEraserMouseUp, true);
+    graphDiv.addEventListener('mouseleave', handleEraserMouseUp, true);
+
     console.log('Click handlers attached successfully');
   });
 
@@ -1042,10 +1060,155 @@ function handleGraphRightClick(event) {
   }
 }
 
+// Eraser mode functions
+function handleEraserKeyDown(event) {
+  if (event.key === 'Shift') {
+    const graphDiv = document.getElementById('main-graph');
+    if (graphDiv) {
+      graphDiv.classList.add('eraser-cursor');
+      // Disable Plotly's drag mode when shift is pressed
+      Plotly.relayout(graphDiv, { dragmode: false });
+    }
+  }
+}
+
+function handleEraserKeyUp(event) {
+  if (event.key === 'Shift') {
+    const graphDiv = document.getElementById('main-graph');
+    if (graphDiv) {
+      graphDiv.classList.remove('eraser-cursor');
+      // Re-enable Plotly's drag mode when shift is released
+      Plotly.relayout(graphDiv, { dragmode: 'zoom' });
+    }
+    state.eraserActive = false;
+  }
+}
+
+function handleEraserMouseDown(event) {
+  // Only activate eraser when shift is held
+  if (!event.shiftKey) return;
+
+  // Don't process clicks on modebar
+  if (event.target.classList.contains('modebar-btn') ||
+      event.target.closest('.modebar')) {
+    return;
+  }
+
+  console.log('Eraser mousedown - activating');
+  state.eraserActive = true;
+  state.eraserModified = false;  // Track if we erased anything
+
+  // Erase at initial click position (don't update display yet)
+  eraseAtPositionNoUpdate(event);
+
+  // Prevent default and stop propagation to prevent Plotly drag
+  event.preventDefault();
+  event.stopPropagation();
+}
+
+function handleEraserMouseMove(event) {
+  // Only erase if eraser is active (shift held + mouse down)
+  if (!state.eraserActive) return;
+
+  // If shift was released during drag, stop erasing
+  if (!event.shiftKey) {
+    console.log('Shift released during drag, stopping');
+    handleEraserMouseUp(event);
+    return;
+  }
+
+  console.log('Eraser move at', event.clientX, event.clientY);
+  eraseAtPositionNoUpdate(event);
+
+  event.preventDefault();
+}
+
+function handleEraserMouseUp(event) {
+  if (state.eraserActive) {
+    console.log('Eraser mouseup - deactivating, modified:', state.eraserModified);
+    state.eraserActive = false;
+
+    // Now update display once at the end if we erased anything
+    if (state.eraserModified) {
+      const segmentId = state.currentSegment.toString();
+      state.labels[segmentId].labeled = true;
+      updateDisplay();
+      markLabelsDirty();
+    }
+  }
+}
+
+function eraseAtPositionNoUpdate(event) {
+  if (!state.fileData) {
+    console.log('eraseAtPositionNoUpdate: no fileData');
+    return;
+  }
+
+  const graphDiv = document.getElementById('main-graph');
+  const xaxis = graphDiv._fullLayout?.xaxis;
+  if (!xaxis) {
+    console.log('eraseAtPositionNoUpdate: no xaxis');
+    return;
+  }
+
+  // Calculate x position from mouse coordinates
+  const bbox = graphDiv.getBoundingClientRect();
+  const xPixelInPlotArea = event.clientX - bbox.left - xaxis._offset;
+  const clickedTime = xaxis.range[0] + (xPixelInPlotArea / xaxis._length) * (xaxis.range[1] - xaxis.range[0]);
+
+  if (clickedTime === undefined || isNaN(clickedTime)) {
+    console.log('eraseAtPositionNoUpdate: invalid clickedTime');
+    return;
+  }
+
+  const samplingRate = state.metadata ? state.metadata.sampling_rate : 250;
+  const clickedIndex = Math.round(clickedTime * samplingRate);
+
+  console.log('Eraser checking at index:', clickedIndex, 'time:', clickedTime.toFixed(2));
+
+  const segmentId = state.currentSegment.toString();
+  if (!state.labels[segmentId]) {
+    console.log('eraseAtPositionNoUpdate: no labels for segment');
+    return;
+  }
+
+  // All label types to check
+  const allLabelTypes = [
+    'compression_systolic_points',
+    'compression_diastolic_points',
+    'spontaneous_systolic_points',
+    'spontaneous_diastolic_points'
+  ];
+
+  // Check each label type for points to erase
+  for (const labelType of allLabelTypes) {
+    const labelArray = state.labels[segmentId].label_indexes[labelType];
+    if (!labelArray || labelArray.length === 0) continue;
+
+    // Log the points we're checking against
+    console.log(`  ${labelType}: points at`, labelArray.slice(0, 10).join(', '), labelArray.length > 10 ? '...' : '');
+
+    // Find all points within eraser tolerance (may remove multiple if close together)
+    for (let i = labelArray.length - 1; i >= 0; i--) {
+      const distance = Math.abs(labelArray[i] - clickedIndex);
+      if (distance <= ERASER_TOLERANCE) {
+        console.log(`  ERASING point at index ${labelArray[i]} (distance: ${distance})`);
+        labelArray.splice(i, 1);
+        state.eraserModified = true;
+      }
+    }
+  }
+}
+
 function handleDirectClick(event) {
   // Don't process clicks on buttons or other UI elements
   if (event.target.classList.contains('modebar-btn') ||
       event.target.closest('.modebar')) {
+    return;
+  }
+
+  // If shift is held, eraser mode is active - don't process normal click
+  if (event.shiftKey) {
     return;
   }
 
