@@ -354,6 +354,19 @@ body {
   font-size: 12px;
 }
 
+.textarea-note {
+  min-height: 60px;
+  max-height: 120px;
+  resize: vertical;
+  font-family: inherit;
+  margin-top: 8px;
+}
+
+.textarea-note:disabled {
+  background: #f7fafc;
+  cursor: not-allowed;
+}
+
 .onset-params {
   display: flex;
   flex-direction: column;

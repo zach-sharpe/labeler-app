@@ -178,6 +178,11 @@ function validateLabels(labels) {
 
   // Check each segment
   for (const [segmentId, segmentData] of Object.entries(labels)) {
+    // Skip _metadata key - it's used for audit information
+    if (segmentId === '_metadata') {
+      continue;
+    }
+
     // Segment ID should be a numeric string
     if (!/^\d+$/.test(segmentId)) {
       return { valid: false, error: `Invalid segment ID: ${segmentId}` };

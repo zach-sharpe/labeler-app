@@ -238,6 +238,10 @@ function setupEventListeners() {
   document.getElementById('review-toggle-btn').addEventListener('click', toggleReview);
   document.getElementById('done-toggle-btn').addEventListener('click', toggleDone);
 
+  // Note textareas - save on change
+  document.getElementById('review-note').addEventListener('input', handleReviewNoteChange);
+  document.getElementById('region-note').addEventListener('input', handleRegionNoteChange);
+
   // Experimental tab
   document.getElementById('find-upslope-btn').addEventListener('click', findUpslope);
   document.getElementById('erase-upslope-btn').addEventListener('click', eraseUpslopeLabels);
@@ -268,6 +272,7 @@ function focusKeyboardInput() {
   if (activeElement && (
     activeElement.tagName === 'SELECT' ||
     activeElement.tagName === 'INPUT' ||
+    activeElement.tagName === 'TEXTAREA' ||
     activeElement.tagName === 'BUTTON'
   )) {
     return;
@@ -424,6 +429,8 @@ async function loadFile() {
   document.getElementById('clear-regions-btn').disabled = false;
   document.getElementById('review-toggle-btn').disabled = false;
   document.getElementById('done-toggle-btn').disabled = false;
+  document.getElementById('review-note').disabled = false;
+  document.getElementById('region-note').disabled = false;
 
   // Update Done button state
   updateDoneButton();
@@ -520,6 +527,7 @@ function updateDisplay() {
   updateSegmentInfo();
   updateLabelCounts();
   updateReviewButton();
+  updateRegionNote();
   updateGraph();
   focusKeyboardInput();
 }
@@ -535,6 +543,61 @@ function updateReviewButton() {
   } else {
     btn.classList.remove('active');
   }
+
+  // Update review note textarea
+  const reviewNote = document.getElementById('review-note');
+  reviewNote.value = (segmentLabels && segmentLabels.review_note) || '';
+}
+
+function updateRegionNote() {
+  const segmentId = state.currentSegment.toString();
+  const segmentLabels = state.labels[segmentId];
+
+  // Update region note textarea
+  const regionNote = document.getElementById('region-note');
+  regionNote.value = (segmentLabels && segmentLabels.region_note) || '';
+}
+
+function handleReviewNoteChange(e) {
+  const segmentId = state.currentSegment.toString();
+
+  // Initialize segment labels if needed
+  if (!state.labels[segmentId]) {
+    state.labels[segmentId] = {
+      labeled: false,
+      review: false,
+      label_indexes: {
+        compression_systolic_points: [],
+        compression_diastolic_points: [],
+        spontaneous_systolic_points: [],
+        spontaneous_diastolic_points: []
+      }
+    };
+  }
+
+  state.labels[segmentId].review_note = e.target.value;
+  markLabelsDirty();
+}
+
+function handleRegionNoteChange(e) {
+  const segmentId = state.currentSegment.toString();
+
+  // Initialize segment labels if needed
+  if (!state.labels[segmentId]) {
+    state.labels[segmentId] = {
+      labeled: false,
+      review: false,
+      label_indexes: {
+        compression_systolic_points: [],
+        compression_diastolic_points: [],
+        spontaneous_systolic_points: [],
+        spontaneous_diastolic_points: []
+      }
+    };
+  }
+
+  state.labels[segmentId].region_note = e.target.value;
+  markLabelsDirty();
 }
 
 function toggleReview() {
