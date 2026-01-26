@@ -19,6 +19,20 @@ body {
   width: 100vw;
 }
 
+/* Sidebar on right side */
+.app-container.sidebar-right {
+  flex-direction: row-reverse;
+}
+
+.app-container.sidebar-right .sidebar {
+  box-shadow: -2px 0 8px rgba(0, 0, 0, 0.1);
+}
+
+.app-container.sidebar-right .sidebar-resize-handle {
+  right: auto;
+  left: 0;
+}
+
 /* Sidebar */
 .sidebar {
   width: 220px;

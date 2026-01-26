@@ -107,6 +107,7 @@ async function loadConfig() {
     labeler_name: 'labeler1',
     labels_directory: 'labels',
     data_folder: '.',
+    sidebar_position: 'left',
     version: '1.0'
   };
 }
@@ -146,6 +147,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('settings-labeler-name').value = config.labeler_name;
   document.getElementById('settings-labels-dir').value = config.labels_directory;
   document.getElementById('settings-data-folder').value = config.data_folder;
+  document.getElementById('settings-sidebar-position').value = config.sidebar_position || 'left';
+
+  // Apply sidebar position
+  applySidebarPosition(config.sidebar_position || 'left');
 
   // Auto-load files from default data folder if configured
   if (config.data_folder && config.data_folder !== '.') {
@@ -2084,10 +2089,13 @@ function cycleLabelType(direction) {
 
 // Settings functions
 async function saveSettings() {
+  const sidebarPosition = document.getElementById('settings-sidebar-position').value;
+
   const config = {
     labeler_name: document.getElementById('settings-labeler-name').value,
     labels_directory: document.getElementById('settings-labels-dir').value,
     data_folder: document.getElementById('settings-data-folder').value,
+    sidebar_position: sidebarPosition,
     version: '1.0'
   };
 
@@ -2100,6 +2108,9 @@ async function saveSettings() {
 
     // Update state
     state.labelerName = config.labeler_name;
+
+    // Apply sidebar position immediately
+    applySidebarPosition(sidebarPosition);
 
     setTimeout(() => {
       statusEl.textContent = '';
@@ -2115,6 +2126,7 @@ async function resetSettings() {
     labeler_name: 'labeler1',
     labels_directory: 'labels',
     data_folder: '.',
+    sidebar_position: 'left',
     version: '1.0'
   };
 
@@ -2124,10 +2136,31 @@ async function resetSettings() {
   document.getElementById('settings-labeler-name').value = defaultConfig.labeler_name;
   document.getElementById('settings-labels-dir').value = defaultConfig.labels_directory;
   document.getElementById('settings-data-folder').value = defaultConfig.data_folder;
+  document.getElementById('settings-sidebar-position').value = defaultConfig.sidebar_position;
+
+  // Apply sidebar position
+  applySidebarPosition(defaultConfig.sidebar_position);
 
   const statusEl = document.getElementById('settings-status');
   statusEl.textContent = 'Settings reset to defaults';
   statusEl.style.color = '#38a169';
+}
+
+function applySidebarPosition(position) {
+  const appContainer = document.querySelector('.app-container');
+  if (position === 'right') {
+    appContainer.classList.add('sidebar-right');
+  } else {
+    appContainer.classList.remove('sidebar-right');
+  }
+
+  // Resize Plotly graph to fit new layout
+  const graphDiv = document.getElementById('main-graph');
+  if (graphDiv && window.Plotly) {
+    setTimeout(() => {
+      Plotly.Plots.resize(graphDiv);
+    }, 100);
+  }
 }
 
 async function browseLabelsDir() {
@@ -2227,7 +2260,10 @@ function initializeResizableSidebar() {
     if (!isResizing) return;
 
     const deltaX = e.clientX - startX;
-    const newWidth = Math.max(180, Math.min(400, startWidth + deltaX));
+    // When sidebar is on right, dragging left (negative deltaX) should increase width
+    const isRightSidebar = document.querySelector('.app-container').classList.contains('sidebar-right');
+    const adjustedDelta = isRightSidebar ? -deltaX : deltaX;
+    const newWidth = Math.max(180, Math.min(400, startWidth + adjustedDelta));
 
     sidebar.style.width = `${newWidth}px`;
 
