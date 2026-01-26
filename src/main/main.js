@@ -341,6 +341,31 @@ ipcMain.handle('load-review-files', async (event, labelerName, labelsDir) => {
   }
 });
 
+// Load in-progress files (files that have label files)
+ipcMain.handle('load-in-progress-files', async (event, labelerName, labelsDir) => {
+  // Validate labeler name
+  const labelerResult = security.validateLabelerName(labelerName);
+  if (!labelerResult.valid) {
+    return { success: false, error: labelerResult.error };
+  }
+
+  // Validate labels directory path
+  const pathResult = security.validatePath(labelsDir);
+  if (!pathResult.valid) {
+    return { success: false, error: pathResult.error };
+  }
+
+  try {
+    const inProgressFiles = await pythonBridge.call('load_in_progress_files', {
+      labeler_name: labelerResult.sanitized,
+      labels_directory: pathResult.sanitized
+    });
+    return { success: true, in_progress_files: inProgressFiles };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
 // Find peaks
 ipcMain.handle('find-peaks', async (event, signalData, segmentIndex) => {
   try {

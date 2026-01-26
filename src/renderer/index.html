@@ -24,6 +24,7 @@
         <button class="tab-btn" data-tab="labeling">Labeling</button>
         <button class="tab-btn" data-tab="signals">Signals</button>
         <button class="tab-btn" data-tab="experimental">Experimental</button>
+        <button class="tab-btn" data-tab="explorer">Explorer</button>
         <button class="tab-btn" data-tab="settings">Settings</button>
       </div>
 
@@ -208,7 +209,49 @@
           </div>
         </div>
 
-        <!-- Tab 5: Settings -->
+        <!-- Tab 5: Explorer -->
+        <div id="tab-explorer" class="tab-panel">
+          <div class="control-group">
+            <h3>File Explorer</h3>
+            <p class="help-text">Overview of labeling progress. Click a category to filter the file dropdown.</p>
+          </div>
+
+          <!-- File Statistics -->
+          <div class="control-group">
+            <label>File Statistics:</label>
+            <div class="explorer-stats">
+              <button class="explorer-stat-btn" id="stat-total" data-filter="all">
+                <span class="stat-count" id="stat-total-count">0</span>
+                <span class="stat-label">Total Files</span>
+              </button>
+              <button class="explorer-stat-btn stat-done" id="stat-done" data-filter="done">
+                <span class="stat-count" id="stat-done-count">0</span>
+                <span class="stat-label">Done</span>
+              </button>
+              <button class="explorer-stat-btn stat-review" id="stat-review" data-filter="review">
+                <span class="stat-count" id="stat-review-count">0</span>
+                <span class="stat-label">Review</span>
+              </button>
+              <button class="explorer-stat-btn stat-in-progress" id="stat-in-progress" data-filter="in-progress">
+                <span class="stat-count" id="stat-in-progress-count">0</span>
+                <span class="stat-label">In Progress</span>
+              </button>
+              <button class="explorer-stat-btn stat-not-started" id="stat-not-started" data-filter="not-started">
+                <span class="stat-count" id="stat-not-started-count">0</span>
+                <span class="stat-label">Not Started</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Current Filter -->
+          <div class="control-group">
+            <label>Current Filter:</label>
+            <span id="current-filter-label" class="filter-label">All Files</span>
+            <button id="clear-filter-btn" class="btn btn-secondary btn-small" style="display: none;">Clear Filter</button>
+          </div>
+        </div>
+
+        <!-- Tab 6: Settings -->
         <div id="tab-settings" class="tab-panel">
           <div class="control-group">
             <h3>Application Settings</h3>

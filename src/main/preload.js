@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   loadDoneFiles: (labelerName, labelsDir) => ipcRenderer.invoke('load-done-files', labelerName, labelsDir),
   toggleDoneFile: (filename, labelerName, labelsDir) => ipcRenderer.invoke('toggle-done-file', filename, labelerName, labelsDir),
   loadReviewFiles: (labelerName, labelsDir) => ipcRenderer.invoke('load-review-files', labelerName, labelsDir),
+  loadInProgressFiles: (labelerName, labelsDir) => ipcRenderer.invoke('load-in-progress-files', labelerName, labelsDir),
 
   // Signal processing
   findPeaks: (signalData, segmentIndex) => ipcRenderer.invoke('find-peaks', signalData, segmentIndex),

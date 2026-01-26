@@ -14,6 +14,7 @@ const ALLOWED_PYTHON_METHODS = new Set([
   'load_done_files',
   'toggle_done_file',
   'load_review_files',
+  'load_in_progress_files',
   'find_peaks',
   'get_segment',
   'calculate_derivative',

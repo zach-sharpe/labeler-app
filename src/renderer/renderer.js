@@ -8,6 +8,9 @@ const state = {
   cprLabels: null,  // Store CPR labels per segment (0=non-CPR, 1=CPR)
   doneFiles: [],  // List of files marked as done
   reviewFiles: [],  // List of files with segments marked for review
+  inProgressFiles: [],  // List of files that have label files but are not done/review
+  allFiles: [],  // List of all files in the folder
+  currentFilter: 'all',  // Current file filter: 'all', 'done', 'review', 'in-progress', 'not-started'
   segments: [],
   currentSegment: 0,
   labels: {},
@@ -256,6 +259,14 @@ function setupEventListeners() {
   document.getElementById('erase-upslope-btn').addEventListener('click', eraseUpslopeLabels);
   document.getElementById('upslope-method').addEventListener('change', updateUpslopeThresholdLabel);
 
+  // Explorer tab
+  document.getElementById('stat-total').addEventListener('click', () => applyFileFilter('all'));
+  document.getElementById('stat-done').addEventListener('click', () => applyFileFilter('done'));
+  document.getElementById('stat-review').addEventListener('click', () => applyFileFilter('review'));
+  document.getElementById('stat-in-progress').addEventListener('click', () => applyFileFilter('in-progress'));
+  document.getElementById('stat-not-started').addEventListener('click', () => applyFileFilter('not-started'));
+  document.getElementById('clear-filter-btn').addEventListener('click', () => applyFileFilter('all'));
+
   // Settings tab
   document.getElementById('save-settings-btn').addEventListener('click', saveSettings);
   document.getElementById('reset-settings-btn').addEventListener('click', resetSettings);
@@ -308,6 +319,9 @@ async function loadFilesFromFolder(folderPath) {
   console.log('CSV files result:', filesResult);
 
   if (filesResult.success) {
+    // Store all files
+    state.allFiles = filesResult.files;
+
     // Load done files for current labeler from the configured labels directory
     const labelsDir = document.getElementById('settings-labels-dir').value || 'labels';
     const doneResult = await window.electronAPI.loadDoneFiles(state.labelerName, labelsDir);
@@ -325,22 +339,19 @@ async function loadFilesFromFolder(folderPath) {
       state.reviewFiles = [];
     }
 
-    const dropdown = document.getElementById('file-dropdown');
-    dropdown.innerHTML = '<option value="">Select a file...</option>';
-    filesResult.files.forEach(file => {
-      console.log('Adding file to dropdown:', file);
-      const option = document.createElement('option');
-      option.value = file;
-      option.textContent = file;
-      // Apply styling based on status (review/red takes priority over done/green)
-      const fileBaseName = stripExtension(file);
-      if (state.reviewFiles.includes(fileBaseName)) {
-        option.style.backgroundColor = '#f8d7da';  // Red for review
-      } else if (state.doneFiles.includes(file)) {
-        option.style.backgroundColor = '#d4edda';  // Green for done
-      }
-      dropdown.appendChild(option);
-    });
+    // Load in-progress files (files with label files)
+    const inProgressResult = await window.electronAPI.loadInProgressFiles(state.labelerName, labelsDir);
+    if (inProgressResult.success) {
+      state.inProgressFiles = inProgressResult.in_progress_files || [];
+    } else {
+      state.inProgressFiles = [];
+    }
+
+    // Update explorer statistics
+    updateExplorerStats();
+
+    // Populate dropdown with current filter
+    populateFileDropdown();
     dropdown.disabled = false;
     console.log('Dropdown enabled with', filesResult.files.length, 'files');
     return true;
@@ -733,16 +744,21 @@ function updateDropdownDoneStyles() {
   options.forEach(option => {
     if (option.value) {
       const fileBaseName = stripExtension(option.value);
-      // Review (red) takes priority over done (green)
+      // Review (red) takes priority over done (green), then in-progress (yellow)
       if (state.reviewFiles.includes(fileBaseName)) {
         option.style.backgroundColor = '#f8d7da';  // Red for review
       } else if (state.doneFiles.includes(option.value)) {
         option.style.backgroundColor = '#d4edda';  // Green for done
+      } else if (state.inProgressFiles.includes(fileBaseName)) {
+        option.style.backgroundColor = '#fff3cd';  // Yellow for in-progress
       } else {
         option.style.backgroundColor = '';
       }
     }
   });
+
+  // Also update explorer stats
+  updateExplorerStats();
 }
 
 function updateSegmentInfo() {
@@ -1880,6 +1896,15 @@ async function saveLabels(showStatus = true) {
 
   if (result.success) {
     state.labelsDirty = false;
+
+    // Update in-progress files list (this file now has labels)
+    const fileBaseName = stripExtension(state.currentFile);
+    if (!state.inProgressFiles.includes(fileBaseName)) {
+      state.inProgressFiles.push(fileBaseName);
+      updateExplorerStats();
+      updateDropdownDoneStyles();
+    }
+
     if (showStatus) {
       const statusEl = document.getElementById('save-status');
       statusEl.textContent = 'Labels saved successfully!';
@@ -2495,4 +2520,117 @@ if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', initializeRangeSlider);
 } else {
   initializeRangeSlider();
+}
+
+// ============================================================================
+// Explorer Tab Functions
+// ============================================================================
+
+function updateExplorerStats() {
+  const totalFiles = state.allFiles.length;
+  const doneCount = state.doneFiles.length;
+  const reviewCount = state.reviewFiles.length;
+
+  // In-progress: files with label files that are not done and not in review
+  // Note: A file can be both in-progress and review, so we count those with labels
+  // but exclude done files for in-progress count
+  const filesWithLabels = state.inProgressFiles;
+  const inProgressCount = filesWithLabels.filter(baseName => {
+    // Find the full filename
+    const fullFile = state.allFiles.find(f => stripExtension(f) === baseName);
+    if (!fullFile) return false;
+    // Not done and not in review = in progress
+    return !state.doneFiles.includes(fullFile) && !state.reviewFiles.includes(baseName);
+  }).length;
+
+  // Not started: files without any label file
+  const notStartedCount = state.allFiles.filter(file => {
+    const baseName = stripExtension(file);
+    return !state.inProgressFiles.includes(baseName);
+  }).length;
+
+  // Update UI
+  document.getElementById('stat-total-count').textContent = totalFiles;
+  document.getElementById('stat-done-count').textContent = doneCount;
+  document.getElementById('stat-review-count').textContent = reviewCount;
+  document.getElementById('stat-in-progress-count').textContent = inProgressCount;
+  document.getElementById('stat-not-started-count').textContent = notStartedCount;
+}
+
+function getFilteredFiles(filter) {
+  switch (filter) {
+    case 'done':
+      return state.allFiles.filter(file => state.doneFiles.includes(file));
+    case 'review':
+      return state.allFiles.filter(file => state.reviewFiles.includes(stripExtension(file)));
+    case 'in-progress':
+      return state.allFiles.filter(file => {
+        const baseName = stripExtension(file);
+        return state.inProgressFiles.includes(baseName) &&
+               !state.doneFiles.includes(file) &&
+               !state.reviewFiles.includes(baseName);
+      });
+    case 'not-started':
+      return state.allFiles.filter(file => {
+        const baseName = stripExtension(file);
+        return !state.inProgressFiles.includes(baseName);
+      });
+    case 'all':
+    default:
+      return state.allFiles;
+  }
+}
+
+function populateFileDropdown() {
+  const dropdown = document.getElementById('file-dropdown');
+  const filteredFiles = getFilteredFiles(state.currentFilter);
+
+  dropdown.innerHTML = '<option value="">Select a file...</option>';
+  filteredFiles.forEach(file => {
+    const option = document.createElement('option');
+    option.value = file;
+    option.textContent = file;
+    // Apply styling based on status (review/red takes priority over done/green)
+    const fileBaseName = stripExtension(file);
+    if (state.reviewFiles.includes(fileBaseName)) {
+      option.style.backgroundColor = '#f8d7da';  // Red for review
+    } else if (state.doneFiles.includes(file)) {
+      option.style.backgroundColor = '#d4edda';  // Green for done
+    } else if (state.inProgressFiles.includes(fileBaseName)) {
+      option.style.backgroundColor = '#fff3cd';  // Yellow for in-progress
+    }
+    dropdown.appendChild(option);
+  });
+
+  dropdown.disabled = false;
+}
+
+function applyFileFilter(filter) {
+  state.currentFilter = filter;
+
+  // Update UI
+  const filterLabels = {
+    'all': 'All Files',
+    'done': 'Done',
+    'review': 'Review',
+    'in-progress': 'In Progress',
+    'not-started': 'Not Started'
+  };
+  document.getElementById('current-filter-label').textContent = filterLabels[filter];
+
+  // Show/hide clear button
+  const clearBtn = document.getElementById('clear-filter-btn');
+  clearBtn.style.display = filter === 'all' ? 'none' : 'inline-block';
+
+  // Update active state on buttons
+  document.querySelectorAll('.explorer-stat-btn').forEach(btn => {
+    btn.classList.remove('active');
+  });
+  const activeBtn = document.querySelector(`.explorer-stat-btn[data-filter="${filter}"]`);
+  if (activeBtn) {
+    activeBtn.classList.add('active');
+  }
+
+  // Repopulate dropdown
+  populateFileDropdown();
 }

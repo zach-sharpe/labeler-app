@@ -357,6 +357,27 @@ def load_review_files(params):
     return review_files
 
 
+def load_in_progress_files(params):
+    """Load list of files that have label files (in progress) for a labeler."""
+    labeler_name = params['labeler_name']
+    labels_dir = params.get('labels_directory', LABELS_DIR)
+    labeler_dir = os.path.join(labels_dir, labeler_name)
+
+    in_progress_files = []
+
+    if not os.path.exists(labeler_dir):
+        return in_progress_files
+
+    # Scan all label JSON files in the labeler's directory
+    for filename in os.listdir(labeler_dir):
+        if filename.endswith('.json') and filename != 'done_files.json':
+            # Add the base name (without .json extension)
+            base_name = filename[:-5]
+            in_progress_files.append(base_name)
+
+    return in_progress_files
+
+
 def find_peaks(params):
     """Find peaks in signal data using scipy.signal.find_peaks."""
     signal_data = params['signal_data']
@@ -550,6 +571,7 @@ METHODS = {
     'load_done_files': load_done_files,
     'toggle_done_file': toggle_done_file,
     'load_review_files': load_review_files,
+    'load_in_progress_files': load_in_progress_files,
     'find_peaks': find_peaks,
     'get_segment': get_segment,
     'calculate_derivative': calculate_derivative,
