@@ -1139,38 +1139,24 @@ function handleEraserMouseUp(event) {
 }
 
 function eraseAtPositionNoUpdate(event) {
-  if (!state.fileData) {
-    console.log('eraseAtPositionNoUpdate: no fileData');
-    return;
-  }
+  if (!state.fileData) return;
 
   const graphDiv = document.getElementById('main-graph');
   const xaxis = graphDiv._fullLayout?.xaxis;
-  if (!xaxis) {
-    console.log('eraseAtPositionNoUpdate: no xaxis');
-    return;
-  }
+  if (!xaxis) return;
 
   // Calculate x position from mouse coordinates
   const bbox = graphDiv.getBoundingClientRect();
   const xPixelInPlotArea = event.clientX - bbox.left - xaxis._offset;
   const clickedTime = xaxis.range[0] + (xPixelInPlotArea / xaxis._length) * (xaxis.range[1] - xaxis.range[0]);
 
-  if (clickedTime === undefined || isNaN(clickedTime)) {
-    console.log('eraseAtPositionNoUpdate: invalid clickedTime');
-    return;
-  }
+  if (clickedTime === undefined || isNaN(clickedTime)) return;
 
   const samplingRate = state.metadata ? state.metadata.sampling_rate : 250;
   const clickedIndex = Math.round(clickedTime * samplingRate);
 
-  console.log('Eraser checking at index:', clickedIndex, 'time:', clickedTime.toFixed(2));
-
   const segmentId = state.currentSegment.toString();
-  if (!state.labels[segmentId]) {
-    console.log('eraseAtPositionNoUpdate: no labels for segment');
-    return;
-  }
+  if (!state.labels[segmentId]) return;
 
   // All label types to check
   const allLabelTypes = [
@@ -1180,24 +1166,74 @@ function eraseAtPositionNoUpdate(event) {
     'spontaneous_diastolic_points'
   ];
 
+  let anyRemoved = false;
+
   // Check each label type for points to erase
   for (const labelType of allLabelTypes) {
     const labelArray = state.labels[segmentId].label_indexes[labelType];
     if (!labelArray || labelArray.length === 0) continue;
 
-    // Log the points we're checking against
-    console.log(`  ${labelType}: points at`, labelArray.slice(0, 10).join(', '), labelArray.length > 10 ? '...' : '');
-
     // Find all points within eraser tolerance (may remove multiple if close together)
     for (let i = labelArray.length - 1; i >= 0; i--) {
       const distance = Math.abs(labelArray[i] - clickedIndex);
       if (distance <= ERASER_TOLERANCE) {
-        console.log(`  ERASING point at index ${labelArray[i]} (distance: ${distance})`);
         labelArray.splice(i, 1);
         state.eraserModified = true;
+        anyRemoved = true;
       }
     }
   }
+
+  // Update the graph markers in real-time
+  if (anyRemoved) {
+    updateGraphMarkersOnly();
+  }
+}
+
+// Fast update of just the marker traces without full graph redraw
+function updateGraphMarkersOnly() {
+  const graphDiv = document.getElementById('main-graph');
+  if (!graphDiv || !graphDiv.data) return;
+
+  const segmentId = state.currentSegment.toString();
+  const segmentLabels = state.labels[segmentId];
+  if (!segmentLabels) return;
+
+  const samplingRate = state.metadata ? state.metadata.sampling_rate : 250;
+  const segmentLength = state.metadata ? state.metadata.chunk_size : 2000;
+  const startIdx = state.currentSegment * segmentLength;
+  const endIdx = Math.min(startIdx + segmentLength, state.fileData.data.length);
+  const segmentData = state.fileData.data.slice(startIdx, endIdx);
+
+  // Get the first visible signal for y-values
+  const sortedVisibleSignals = sortSignalsArtFirst(
+    state.signalNames.filter(s => state.visibleSignals.has(s))
+  );
+  if (sortedVisibleSignals.length === 0) return;
+
+  const firstSignal = sortedVisibleSignals[0];
+  const signalIndex = state.columnOrder.indexOf(firstSignal);
+  const yValues = segmentData.map(row => row[signalIndex]);
+
+  // Find and update the marker traces
+  const labelTypes = Object.keys(LABEL_COLORS);
+
+  graphDiv.data.forEach((trace, traceIndex) => {
+    // Check if this trace is a marker trace (has marker mode and matches a label type name)
+    const labelType = labelTypes.find(lt => trace.name === lt.replace(/_/g, ' '));
+    if (labelType && trace.mode === 'markers') {
+      const indices = segmentLabels.label_indexes[labelType] || [];
+      const xMarkers = indices.map(i => i / samplingRate);
+      const yMarkers = indices.map(i => yValues[i]);
+
+      // Update trace data in place
+      graphDiv.data[traceIndex].x = xMarkers;
+      graphDiv.data[traceIndex].y = yMarkers;
+    }
+  });
+
+  // Use Plotly.react for fast update without full redraw
+  Plotly.react(graphDiv, graphDiv.data, graphDiv.layout);
 }
 
 function handleDirectClick(event) {
