@@ -149,6 +149,15 @@
 
         <!-- Tab 3: Signals -->
         <div id="tab-signals" class="tab-panel">
+          <!-- Active Signal Selection -->
+          <div class="control-group">
+            <label>Active Signal (for labeling):</label>
+            <div class="signal-toggles" id="active-signal-toggles">
+              <!-- Active signal buttons will be dynamically added here -->
+            </div>
+            <p class="help-text">Click to select which signal receives labels and peak detection</p>
+          </div>
+
           <!-- Signal Toggle Buttons -->
           <div class="control-group">
             <label>Visible Signals:</label>
@@ -310,6 +319,7 @@
       <div class="segment-info-bar">
         <span id="patient-id-display"></span>
         <span id="segment-display">No file loaded</span>
+        <span id="active-signal-display" class="active-signal-indicator"></span>
       </div>
 
       <div class="graph-container">

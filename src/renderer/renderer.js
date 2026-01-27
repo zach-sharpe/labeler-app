@@ -31,7 +31,8 @@ const state = {
   autoSaveTimeout: null,  // Timeout ID for debounced auto-save
   // Eraser state
   eraserActive: false,  // True when shift is held and mouse is down
-  eraserModified: false  // True if eraser removed any points during current drag
+  eraserModified: false,  // True if eraser removed any points during current drag
+  activeSignal: null  // The signal currently selected for labeling (click on subplot title to change)
 };
 
 const TOLERANCE = 5;  // Tolerance in samples for peak detection/deletion
@@ -93,6 +94,94 @@ function sortSignalsArtFirst(signalList) {
   );
   const otherSignals = signalList.filter(s => !s.toUpperCase().includes('ABP'));
   return [...abpMain, ...abpD1, ...abpD2, ...otherAbp, ...otherSignals];
+}
+
+// Default ABP-like signal detection
+function findDefaultActiveSignal(signalNames) {
+  return signalNames.find(name =>
+    name.toUpperCase() === 'ABP' || name.toUpperCase().includes('ABP')
+  ) || signalNames[0] || null;
+}
+
+// Empty label_indexes template
+function emptyLabelIndexes() {
+  return {
+    compression_systolic_points: [],
+    compression_diastolic_points: [],
+    spontaneous_systolic_points: [],
+    spontaneous_diastolic_points: []
+  };
+}
+
+// Get label_indexes for the active signal in a given segment
+function getActiveLabelIndexes(segmentId) {
+  const seg = state.labels[segmentId];
+  if (!seg || !seg.signals || !state.activeSignal) return emptyLabelIndexes();
+  const sigData = seg.signals[state.activeSignal];
+  if (!sigData) return emptyLabelIndexes();
+  return sigData.label_indexes;
+}
+
+// Get label_indexes for a specific signal in a given segment
+function getSignalLabelIndexes(segmentId, signalName) {
+  const seg = state.labels[segmentId];
+  if (!seg || !seg.signals) return emptyLabelIndexes();
+  const sigData = seg.signals[signalName];
+  if (!sigData) return emptyLabelIndexes();
+  return sigData.label_indexes;
+}
+
+// Ensure segment and signal label structure exists, returns the label_indexes
+function ensureSegmentLabels(segmentId, signalName) {
+  if (!state.labels[segmentId]) {
+    state.labels[segmentId] = {
+      labeled: false,
+      signals: {}
+    };
+  }
+  const seg = state.labels[segmentId];
+  if (!seg.signals) {
+    seg.signals = {};
+  }
+  if (!seg.signals[signalName]) {
+    seg.signals[signalName] = {
+      label_indexes: emptyLabelIndexes()
+    };
+  }
+  return seg.signals[signalName].label_indexes;
+}
+
+// Migrate old label format (flat label_indexes) to new signals-based format
+function migrateLabels(labels, defaultSignal) {
+  for (const [segmentId, segmentData] of Object.entries(labels)) {
+    if (segmentId === '_metadata') continue;
+    if (typeof segmentData !== 'object') continue;
+
+    // Already migrated
+    if (segmentData.signals) continue;
+
+    // Old format: has label_indexes at top level
+    if (segmentData.label_indexes) {
+      const oldIndexes = segmentData.label_indexes;
+      segmentData.signals = {};
+      segmentData.signals[defaultSignal] = {
+        label_indexes: oldIndexes
+      };
+      delete segmentData.label_indexes;
+    } else {
+      // No labels at all, just add empty signals
+      segmentData.signals = {};
+    }
+  }
+  return labels;
+}
+
+// Update the active signal indicator in the UI
+function updateActiveSignalIndicator() {
+  const indicator = document.getElementById('active-signal-display');
+  if (indicator) {
+    indicator.textContent = state.activeSignal ? `Labeling: ${state.activeSignal}` : '';
+  }
 }
 
 // Configuration management
@@ -430,6 +519,13 @@ async function loadFile() {
     state.labels = {};
   }
 
+  // Set default active signal for labeling
+  state.activeSignal = findDefaultActiveSignal(state.signalNames);
+
+  // Migrate old label format to new signals-based format
+  const defaultSignal = state.activeSignal || 'ABP';
+  migrateLabels(state.labels, defaultSignal);
+
   // Initialize visible signals - hide derivatives by default
   state.visibleSignals = new Set(
     state.signalNames.filter(s => !s.toUpperCase().includes('_D1') && !s.toUpperCase().includes('_D2'))
@@ -437,6 +533,9 @@ async function loadFile() {
 
   // Create signal toggle buttons
   createSignalButtons();
+
+  // Update active signal indicator
+  updateActiveSignalIndicator();
 
   // Enable controls
   document.getElementById('prev-segment').disabled = false;
@@ -492,6 +591,44 @@ function createSignalButtons() {
     updateButtonStyle(btn, signalColor, isVisible);
 
     btn.addEventListener('click', () => toggleSignal(signal, btn));
+    container.appendChild(btn);
+  });
+
+  // Also create active signal selection buttons
+  createActiveSignalButtons();
+}
+
+function createActiveSignalButtons() {
+  const container = document.getElementById('active-signal-toggles');
+  if (!container) return;
+  container.innerHTML = '';
+
+  state.signalNames.forEach(signal => {
+    const btn = document.createElement('button');
+    btn.className = 'btn btn-signal';
+    btn.textContent = signal;
+    btn.dataset.signal = signal;
+
+    const isActive = signal === state.activeSignal;
+    if (isActive) {
+      btn.style.backgroundColor = '#d62728';
+      btn.style.color = 'white';
+      btn.style.borderColor = '#d62728';
+      btn.style.fontWeight = 'bold';
+    } else {
+      btn.style.backgroundColor = 'white';
+      btn.style.color = '#333';
+      btn.style.borderColor = '#ccc';
+      btn.style.fontWeight = 'normal';
+    }
+
+    btn.addEventListener('click', () => {
+      state.activeSignal = signal;
+      createActiveSignalButtons();
+      updateGraph();
+      updateLabelCounts();
+      updateActiveSignalIndicator();
+    });
     container.appendChild(btn);
   });
 }
@@ -590,12 +727,7 @@ function handleReviewNoteChange(e) {
     state.labels[segmentId] = {
       labeled: false,
       review: false,
-      label_indexes: {
-        compression_systolic_points: [],
-        compression_diastolic_points: [],
-        spontaneous_systolic_points: [],
-        spontaneous_diastolic_points: []
-      }
+      signals: {}
     };
   }
 
@@ -611,12 +743,7 @@ function handleRegionNoteChange(e) {
     state.labels[segmentId] = {
       labeled: false,
       review: false,
-      label_indexes: {
-        compression_systolic_points: [],
-        compression_diastolic_points: [],
-        spontaneous_systolic_points: [],
-        spontaneous_diastolic_points: []
-      }
+      signals: {}
     };
   }
 
@@ -642,12 +769,7 @@ function toggleReview() {
     state.labels[segmentId] = {
       labeled: false,
       review: false,
-      label_indexes: {
-        compression_systolic_points: [],
-        compression_diastolic_points: [],
-        spontaneous_systolic_points: [],
-        spontaneous_diastolic_points: []
-      }
+      signals: {}
     };
   }
 
@@ -793,24 +915,16 @@ function updateSegmentInfo() {
 
 function updateLabelCounts() {
   const segmentId = state.currentSegment.toString();
-  const segmentLabels = state.labels[segmentId] || {
-    labeled: false,
-    label_indexes: {
-      compression_systolic_points: [],
-      compression_diastolic_points: [],
-      spontaneous_systolic_points: [],
-      spontaneous_diastolic_points: []
-    }
-  };
+  const labelIndexes = getActiveLabelIndexes(segmentId);
 
   document.getElementById('count-comp-sys').textContent =
-    segmentLabels.label_indexes.compression_systolic_points.length;
+    labelIndexes.compression_systolic_points.length;
   document.getElementById('count-comp-dia').textContent =
-    segmentLabels.label_indexes.compression_diastolic_points.length;
+    labelIndexes.compression_diastolic_points.length;
   document.getElementById('count-spon-sys').textContent =
-    segmentLabels.label_indexes.spontaneous_systolic_points.length;
+    labelIndexes.spontaneous_systolic_points.length;
   document.getElementById('count-spon-dia').textContent =
-    segmentLabels.label_indexes.spontaneous_diastolic_points.length;
+    labelIndexes.spontaneous_diastolic_points.length;
 }
 
 function updateGraph() {
@@ -866,21 +980,25 @@ function updateGraph() {
     subplotIndex++;
   });
 
-  // Add label markers
+  // Add label markers for the active signal
   const segmentId = state.currentSegment.toString();
   const segmentLabels = state.labels[segmentId];
 
-  if (segmentLabels) {
-    Object.entries(LABEL_COLORS).forEach(([labelType, color]) => {
-      const indices = segmentLabels.label_indexes[labelType] || [];
-      if (indices.length > 0) {
-        // Get the first visible signal for marker placement
-        const firstVisibleSignal = sortedVisibleSignals[0];
-        const signalIndex = state.columnOrder.indexOf(firstVisibleSignal);
-        const yValues = segmentData.map(row => row[signalIndex]);
+  if (segmentLabels && segmentLabels.signals) {
+    // Determine which subplot the active signal is on
+    const activeSignalSubplotIdx = sortedVisibleSignals.indexOf(state.activeSignal);
+    const activeYaxis = activeSignalSubplotIdx >= 0 ? `y${activeSignalSubplotIdx + 1}` : 'y1';
 
+    // Draw markers for active signal (full size)
+    const activeLabelIndexes = getActiveLabelIndexes(segmentId);
+    const activeSignalDataIdx = state.columnOrder.indexOf(state.activeSignal);
+    const activeYValues = activeSignalDataIdx >= 0 ? segmentData.map(row => row[activeSignalDataIdx]) : [];
+
+    Object.entries(LABEL_COLORS).forEach(([labelType, color]) => {
+      const indices = activeLabelIndexes[labelType] || [];
+      if (indices.length > 0 && activeYValues.length > 0) {
         const xMarkers = indices.map(i => i / samplingRate);
-        const yMarkers = indices.map(i => yValues[i]);
+        const yMarkers = indices.map(i => activeYValues[i]);
 
         traces.push({
           x: xMarkers,
@@ -898,11 +1016,46 @@ function updateGraph() {
             }
           },
           xaxis: 'x',
-          yaxis: 'y1',
+          yaxis: activeYaxis,
           showlegend: true,
-          hoverinfo: 'none'  // Disable hover tooltip but allow clicks
+          hoverinfo: 'none'
         });
       }
+    });
+
+    // Draw dimmed markers for other signals that have labels
+    Object.entries(segmentLabels.signals).forEach(([signalName, sigData]) => {
+      if (signalName === state.activeSignal) return;
+      const sigSubplotIdx = sortedVisibleSignals.indexOf(signalName);
+      if (sigSubplotIdx < 0) return; // not visible
+
+      const sigDataIdx = state.columnOrder.indexOf(signalName);
+      if (sigDataIdx < 0) return;
+      const sigYValues = segmentData.map(row => row[sigDataIdx]);
+      const sigYaxis = `y${sigSubplotIdx + 1}`;
+
+      Object.entries(LABEL_COLORS).forEach(([labelType, color]) => {
+        const indices = (sigData.label_indexes && sigData.label_indexes[labelType]) || [];
+        if (indices.length > 0) {
+          traces.push({
+            x: indices.map(i => i / samplingRate),
+            y: indices.map(i => sigYValues[i]),
+            type: 'scatter',
+            mode: 'markers',
+            marker: {
+              color: color,
+              size: 4,
+              symbol: 'circle',
+              opacity: 0.4,
+              line: { color: 'white', width: 0.5 }
+            },
+            xaxis: 'x',
+            yaxis: sigYaxis,
+            showlegend: false,
+            hoverinfo: 'none'
+          });
+        }
+      });
     });
   }
 
@@ -948,8 +1101,15 @@ function updateGraph() {
     const position = reversedIdx * (subplotHeight + spacing);
     const nextPosition = position + subplotHeight;
 
+    const isActive = sortedVisibleSignals[idx] === state.activeSignal;
     layout[yaxisKey] = {
-      title: sortedVisibleSignals[idx],
+      title: {
+        text: isActive ? `▶ ${sortedVisibleSignals[idx]}` : sortedVisibleSignals[idx],
+        font: {
+          weight: isActive ? 'bold' : 'normal',
+          color: isActive ? '#d62728' : '#444'
+        }
+      },
       domain: [position, nextPosition]
     };
   });
@@ -1016,6 +1176,7 @@ function updateGraph() {
     graphDiv.addEventListener('mouseleave', handleEraserMouseUp, true);
 
     console.log('Click handlers attached successfully');
+
   });
 
   // Add right-click (context menu) handler for deleting any peak
@@ -1060,8 +1221,9 @@ function handleGraphRightClick(event) {
 
     let foundAndRemoved = false;
 
+    const activeLabelIndexes = ensureSegmentLabels(segmentId, state.activeSignal);
     for (const labelType of labelTypes) {
-      const labelArray = state.labels[segmentId].label_indexes[labelType];
+      const labelArray = activeLabelIndexes[labelType];
       const nearbyIndex = labelArray.findIndex(idx => Math.abs(idx - clickedIndex) <= TOLERANCE);
 
       if (nearbyIndex !== -1) {
@@ -1189,9 +1351,10 @@ function eraseAtPositionNoUpdate(event) {
 
   let anyRemoved = false;
 
-  // Check each label type for points to erase
+  // Check each label type for points to erase (active signal only)
+  const activeLabelIndexes = getActiveLabelIndexes(segmentId);
   for (const labelType of allLabelTypes) {
-    const labelArray = state.labels[segmentId].label_indexes[labelType];
+    const labelArray = activeLabelIndexes[labelType];
     if (!labelArray || labelArray.length === 0) continue;
 
     // Find all points within eraser tolerance (may remove multiple if close together)
@@ -1226,24 +1389,20 @@ function updateGraphMarkersOnly() {
   const endIdx = Math.min(startIdx + segmentLength, state.fileData.data.length);
   const segmentData = state.fileData.data.slice(startIdx, endIdx);
 
-  // Get the first visible signal for y-values
-  const sortedVisibleSignals = sortSignalsArtFirst(
-    state.signalNames.filter(s => state.visibleSignals.has(s))
-  );
-  if (sortedVisibleSignals.length === 0) return;
-
-  const firstSignal = sortedVisibleSignals[0];
-  const signalIndex = state.columnOrder.indexOf(firstSignal);
-  const yValues = segmentData.map(row => row[signalIndex]);
+  // Get the active signal for y-values
+  const activeSignalIndex = state.columnOrder.indexOf(state.activeSignal);
+  if (activeSignalIndex < 0) return;
+  const yValues = segmentData.map(row => row[activeSignalIndex]);
 
   // Find and update the marker traces
   const labelTypes = Object.keys(LABEL_COLORS);
+  const activeLabelIndexes = getActiveLabelIndexes(segmentId);
 
   graphDiv.data.forEach((trace, traceIndex) => {
     // Check if this trace is a marker trace (has marker mode and matches a label type name)
     const labelType = labelTypes.find(lt => trace.name === lt.replace(/_/g, ' '));
     if (labelType && trace.mode === 'markers') {
-      const indices = segmentLabels.label_indexes[labelType] || [];
+      const indices = activeLabelIndexes[labelType] || [];
       const xMarkers = indices.map(i => i / samplingRate);
       const yMarkers = indices.map(i => yValues[i]);
 
@@ -1302,12 +1461,7 @@ function handleDirectClick(event) {
       if (!state.labels[segmentId]) {
         state.labels[segmentId] = {
           labeled: true,
-          label_indexes: {
-            compression_systolic_points: [],
-            compression_diastolic_points: [],
-            spontaneous_systolic_points: [],
-            spontaneous_diastolic_points: []
-          }
+          signals: {}
         };
       }
 
@@ -1368,19 +1522,15 @@ function handleDirectClick(event) {
   if (!state.labels[segmentId]) {
     state.labels[segmentId] = {
       labeled: false,
-      label_indexes: {
-        compression_systolic_points: [],
-        compression_diastolic_points: [],
-        spontaneous_systolic_points: [],
-        spontaneous_diastolic_points: []
-      }
+      signals: {}
     };
   }
 
-  // First, check if clicking near ANY existing label (to remove from any type)
+  // First, check if clicking near ANY existing label on active signal (to remove from any type)
+  const activeLabelIndexes = ensureSegmentLabels(segmentId, state.activeSignal);
   let foundAndRemoved = false;
-  for (const labelType in state.labels[segmentId].label_indexes) {
-    const labelArray = state.labels[segmentId].label_indexes[labelType];
+  for (const labelType in activeLabelIndexes) {
+    const labelArray = activeLabelIndexes[labelType];
     const nearbyIndex = labelArray.findIndex(idx => Math.abs(idx - clickedIndex) <= TOLERANCE);
 
     if (nearbyIndex !== -1) {
@@ -1392,7 +1542,7 @@ function handleDirectClick(event) {
 
   if (!foundAndRemoved) {
     // Add new peak to current label type
-    const labelArray = state.labels[segmentId].label_indexes[state.currentLabelType];
+    const labelArray = activeLabelIndexes[state.currentLabelType];
     labelArray.push(clickedIndex);
     labelArray.sort((a, b) => a - b);
   }
@@ -1432,16 +1582,12 @@ function handleGraphClick(data) {
   if (!state.labels[segmentId]) {
     state.labels[segmentId] = {
       labeled: false,
-      label_indexes: {
-        compression_systolic_points: [],
-        compression_diastolic_points: [],
-        spontaneous_systolic_points: [],
-        spontaneous_diastolic_points: []
-      }
+      signals: {}
     };
   }
 
-  // First, check if clicking near ANY existing label (to remove from any type)
+  // First, check if clicking near ANY existing label on active signal (to remove from any type)
+  const activeLabelIndexes = ensureSegmentLabels(segmentId, state.activeSignal);
   const labelTypes = [
     'compression_systolic_points',
     'compression_diastolic_points',
@@ -1452,7 +1598,7 @@ function handleGraphClick(data) {
   let foundAndRemoved = false;
 
   for (const labelType of labelTypes) {
-    const labelArray = state.labels[segmentId].label_indexes[labelType];
+    const labelArray = activeLabelIndexes[labelType];
     const nearbyIndex = labelArray.findIndex(idx => Math.abs(idx - clickedIndex) <= TOLERANCE);
 
     if (nearbyIndex !== -1) {
@@ -1466,7 +1612,7 @@ function handleGraphClick(data) {
 
   // If no nearby label found, add new label to current type
   if (!foundAndRemoved) {
-    const labelArray = state.labels[segmentId].label_indexes[state.currentLabelType];
+    const labelArray = activeLabelIndexes[state.currentLabelType];
     labelArray.push(clickedIndex);
     labelArray.sort((a, b) => a - b);
     console.log('Added peak to', state.currentLabelType, 'at index', clickedIndex);
@@ -1514,8 +1660,10 @@ function handleGraphDoubleClick(data) {
 
   let foundAndRemoved = false;
 
+  const activeLabelIndexes = getActiveLabelIndexes(segmentId);
   for (const labelType of labelTypes) {
-    const labelArray = state.labels[segmentId].label_indexes[labelType];
+    const labelArray = activeLabelIndexes[labelType];
+    if (!labelArray) continue;
     const nearbyIndex = labelArray.findIndex(idx => Math.abs(idx - clickedIndex) <= TOLERANCE);
 
     if (nearbyIndex !== -1) {
@@ -1545,13 +1693,9 @@ async function findPeaks(targetLabelType) {
     return;
   }
 
-  // Find the arterial line signal (ABP or Art)
-  const artSignal = state.signalNames.find(name =>
-    name.toUpperCase().includes('ABP') || name.toLowerCase() === 'abp'
-  );
-
-  if (!artSignal) {
-    alert('No arterial line (ABP) signal found. Peak finding requires an arterial line signal.');
+  // Use the active signal for peak detection
+  if (!state.activeSignal) {
+    alert('No active signal selected for labeling.');
     return;
   }
 
@@ -1561,11 +1705,11 @@ async function findPeaks(targetLabelType) {
   const endIdx = Math.min(startIdx + segmentLength, state.fileData.data.length);
   const segmentData = state.fileData.data.slice(startIdx, endIdx);
 
-  // Extract arterial line values
-  const signalIndex = state.columnOrder.indexOf(artSignal);
+  // Extract active signal values
+  const signalIndex = state.columnOrder.indexOf(state.activeSignal);
   const signalValues = segmentData.map(row => row[signalIndex]);
 
-  console.log('Using signal:', artSignal, 'with', signalValues.length, 'samples');
+  console.log('Using signal:', state.activeSignal, 'with', signalValues.length, 'samples');
 
   try {
     // Call Python backend for peak detection
@@ -1586,24 +1730,21 @@ async function findPeaks(targetLabelType) {
     if (!state.labels[segmentId]) {
       state.labels[segmentId] = {
         labeled: false,
-        label_indexes: {
-          compression_systolic_points: [],
-          compression_diastolic_points: [],
-          spontaneous_systolic_points: [],
-          spontaneous_diastolic_points: []
-        }
+        signals: {}
       };
     }
 
+    const activeLabelIndexes = ensureSegmentLabels(segmentId, state.activeSignal);
+
     // Apply peaks based on target label type
     if (targetLabelType === 'compression_systolic') {
-      state.labels[segmentId].label_indexes['compression_systolic_points'] = result.peaks.systolic || [];
+      activeLabelIndexes['compression_systolic_points'] = result.peaks.systolic || [];
       console.log('Applied', result.peaks.systolic?.length || 0, 'compression systolic peaks');
     } else if (targetLabelType === 'spontaneous_systolic') {
-      state.labels[segmentId].label_indexes['spontaneous_systolic_points'] = result.peaks.systolic || [];
+      activeLabelIndexes['spontaneous_systolic_points'] = result.peaks.systolic || [];
       console.log('Applied', result.peaks.systolic?.length || 0, 'spontaneous systolic peaks');
     } else if (targetLabelType === 'spontaneous_diastolic') {
-      state.labels[segmentId].label_indexes['spontaneous_diastolic_points'] = result.peaks.diastolic || [];
+      activeLabelIndexes['spontaneous_diastolic_points'] = result.peaks.diastolic || [];
       console.log('Applied', result.peaks.diastolic?.length || 0, 'spontaneous diastolic peaks');
     }
 
@@ -1638,23 +1779,19 @@ async function findOnsetCompression() {
 
   // Check if we have compression systolic points to use as reference
   const segmentId = state.currentSegment.toString();
-  const segmentLabels = state.labels[segmentId];
+  const activeLabelIndexes = getActiveLabelIndexes(segmentId);
 
-  if (!segmentLabels || !segmentLabels.label_indexes.compression_systolic_points ||
-      segmentLabels.label_indexes.compression_systolic_points.length === 0) {
+  if (!activeLabelIndexes.compression_systolic_points ||
+      activeLabelIndexes.compression_systolic_points.length === 0) {
     alert('Please find Compression Systolic points first. Onset detection requires systolic peaks as reference.');
     return;
   }
 
-  const systolicPeaks = segmentLabels.label_indexes.compression_systolic_points;
+  const systolicPeaks = activeLabelIndexes.compression_systolic_points;
 
-  // Find the arterial line signal (ABP)
-  const artSignal = state.signalNames.find(name =>
-    name.toUpperCase() === 'ABP' || name.toUpperCase().includes('ABP')
-  );
-
-  if (!artSignal) {
-    alert('No arterial line (ABP) signal found.');
+  // Use the active signal
+  if (!state.activeSignal) {
+    alert('No active signal selected for labeling.');
     return;
   }
 
@@ -1670,8 +1807,8 @@ async function findOnsetCompression() {
   const endIdx = Math.min(startIdx + segmentLength, state.fileData.data.length);
   const segmentData = state.fileData.data.slice(startIdx, endIdx);
 
-  // Extract arterial line values
-  const signalIndex = state.columnOrder.indexOf(artSignal);
+  // Extract active signal values
+  const signalIndex = state.columnOrder.indexOf(state.activeSignal);
   const signalValues = segmentData.map(row => row[signalIndex]);
 
   console.log('Finding onset compression with window:', windowSize, 'offset:', offset, 'using', systolicPeaks.length, 'systolic peaks');
@@ -1689,7 +1826,8 @@ async function findOnsetCompression() {
     console.log('Onset points found:', result.onsets);
 
     // Apply onsets as compression diastolic points
-    state.labels[segmentId].label_indexes['compression_diastolic_points'] = result.onsets || [];
+    const labelIndexes = ensureSegmentLabels(segmentId, state.activeSignal);
+    labelIndexes['compression_diastolic_points'] = result.onsets || [];
     state.labels[segmentId].labeled = true;
 
     // Update display
@@ -1744,9 +1882,9 @@ async function findUpslope() {
 
   // Get systolic peaks for filtering (if distance filtering is enabled)
   if (minDistance > 0 || maxDistance > 0) {
-    const segmentLabels = state.labels[segmentId];
-    if (segmentLabels && segmentLabels.label_indexes[systolicType]) {
-      systolicPeaks = segmentLabels.label_indexes[systolicType];
+    const activeLabelIndexes = getActiveLabelIndexes(segmentId);
+    if (activeLabelIndexes[systolicType]) {
+      systolicPeaks = activeLabelIndexes[systolicType];
     }
     if (systolicPeaks.length === 0) {
       const peakTypeName = useCompression ? 'compression' : 'spontaneous';
@@ -1755,13 +1893,9 @@ async function findUpslope() {
     }
   }
 
-  // Find the ABP signal
-  const artSignal = state.signalNames.find(name =>
-    name.toUpperCase() === 'ABP' || name.toUpperCase().includes('ABP')
-  );
-
-  if (!artSignal) {
-    alert('No arterial line (ABP) signal found.');
+  // Use the active signal
+  if (!state.activeSignal) {
+    alert('No active signal selected for labeling.');
     return;
   }
 
@@ -1771,8 +1905,8 @@ async function findUpslope() {
   const endIdx = Math.min(startIdx + segmentLength, state.fileData.data.length);
   const segmentData = state.fileData.data.slice(startIdx, endIdx);
 
-  // Extract ABP values
-  const signalIndex = state.columnOrder.indexOf(artSignal);
+  // Extract active signal values
+  const signalIndex = state.columnOrder.indexOf(state.activeSignal);
   const signalValues = segmentData.map(row => row[signalIndex]);
 
   console.log('Finding upslope with method:', thresholdMethod, 'value:', thresholdValue, 'minDistance:', minDistance, 'maxDistance:', maxDistance);
@@ -1799,17 +1933,13 @@ async function findUpslope() {
     if (!state.labels[segmentId]) {
       state.labels[segmentId] = {
         labeled: false,
-        label_indexes: {
-          compression_systolic_points: [],
-          compression_diastolic_points: [],
-          spontaneous_systolic_points: [],
-          spontaneous_diastolic_points: []
-        }
+        signals: {}
       };
     }
 
     // Apply upslopes as selected label type
-    state.labels[segmentId].label_indexes[labelType] = result.upslopes || [];
+    const upslopeLabelIndexes = ensureSegmentLabels(segmentId, state.activeSignal);
+    upslopeLabelIndexes[labelType] = result.upslopes || [];
     state.labels[segmentId].labeled = true;
 
     // Update display
@@ -1833,7 +1963,8 @@ function eraseUpslopeLabels() {
     return;
   }
 
-  const currentCount = state.labels[segmentId].label_indexes[labelType]?.length || 0;
+  const activeLabelIndexes = getActiveLabelIndexes(segmentId);
+  const currentCount = activeLabelIndexes[labelType]?.length || 0;
 
   if (currentCount === 0) {
     alert(`No ${labelType.replace(/_/g, ' ')} labels to erase`);
@@ -1841,7 +1972,8 @@ function eraseUpslopeLabels() {
   }
 
   // Clear the selected label type
-  state.labels[segmentId].label_indexes[labelType] = [];
+  const labelIndexes = ensureSegmentLabels(segmentId, state.activeSignal);
+  labelIndexes[labelType] = [];
 
   // Update display
   updateDisplay();
@@ -1858,7 +1990,8 @@ function eraseCurrentTypeLabels() {
   }
 
   const currentType = state.currentLabelType;
-  const labelCount = state.labels[segmentId].label_indexes[currentType]?.length || 0;
+  const activeLabelIndexes = getActiveLabelIndexes(segmentId);
+  const labelCount = activeLabelIndexes[currentType]?.length || 0;
 
   if (labelCount === 0) {
     alert('No labels of this type to erase in current segment');
@@ -1871,7 +2004,8 @@ function eraseCurrentTypeLabels() {
 
   if (confirmed) {
     // Clear the labels for the current type
-    state.labels[segmentId].label_indexes[currentType] = [];
+    const labelIndexes = ensureSegmentLabels(segmentId, state.activeSignal);
+    labelIndexes[currentType] = [];
 
     // Update the graph to reflect the changes
     updateGraph();
@@ -1965,7 +2099,7 @@ function toggleRegionMode() {
     state.regionEnd = null;
     document.getElementById('region-info').textContent = 'Click twice to select each region';
   } else {
-    btn.textContent = 'Select Region on ABP';
+    btn.textContent = `Select Region on ${state.activeSignal || 'Signal'}`;
     btn.style.backgroundColor = '';
     state.regionStart = null;
     state.regionEnd = null;
@@ -2008,12 +2142,7 @@ function handleRegionSelection(clickData) {
     if (!state.labels[segmentId]) {
       state.labels[segmentId] = {
         labeled: true,
-        label_indexes: {
-          compression_systolic_points: [],
-          compression_diastolic_points: [],
-          spontaneous_systolic_points: [],
-          spontaneous_diastolic_points: []
-        }
+        signals: {}
       };
     }
 

@@ -168,6 +168,35 @@ function validateConfig(config) {
 }
 
 /**
+ * Validates a label_indexes object structure
+ * @param {object} labelIndexes - The label_indexes object to validate
+ * @returns {{valid: boolean, error: string|null}}
+ */
+function validateLabelIndexes(labelIndexes) {
+  const validKeys = [
+    'compression_systolic_points',
+    'compression_diastolic_points',
+    'spontaneous_systolic_points',
+    'spontaneous_diastolic_points'
+  ];
+
+  for (const [key, value] of Object.entries(labelIndexes)) {
+    if (!validKeys.includes(key)) {
+      return { valid: false, error: `Invalid label type: ${key}` };
+    }
+    if (!Array.isArray(value)) {
+      return { valid: false, error: `Label indexes for ${key} must be an array` };
+    }
+    for (const idx of value) {
+      if (typeof idx !== 'number' || idx < 0 || !Number.isInteger(idx)) {
+        return { valid: false, error: `Invalid index in ${key}: ${idx}` };
+      }
+    }
+  }
+  return { valid: true, error: null };
+}
+
+/**
  * Validates labels object structure
  * @param {object} labels - The labels object to validate
  * @returns {{valid: boolean, error: string|null}}
@@ -193,27 +222,24 @@ function validateLabels(labels) {
       return { valid: false, error: `Segment ${segmentId} data must be an object` };
     }
 
-    // Validate label_indexes if present
+    // Validate label_indexes if present (old format, backwards compatibility)
     if (segmentData.label_indexes) {
-      const validKeys = [
-        'compression_systolic_points',
-        'compression_diastolic_points',
-        'spontaneous_systolic_points',
-        'spontaneous_diastolic_points'
-      ];
+      const result = validateLabelIndexes(segmentData.label_indexes);
+      if (!result.valid) return result;
+    }
 
-      for (const [key, value] of Object.entries(segmentData.label_indexes)) {
-        if (!validKeys.includes(key)) {
-          return { valid: false, error: `Invalid label type: ${key}` };
+    // Validate signals structure if present (new format)
+    if (segmentData.signals) {
+      if (typeof segmentData.signals !== 'object') {
+        return { valid: false, error: `Segment ${segmentId} signals must be an object` };
+      }
+      for (const [signalName, signalData] of Object.entries(segmentData.signals)) {
+        if (typeof signalData !== 'object') {
+          return { valid: false, error: `Signal ${signalName} data must be an object` };
         }
-        if (!Array.isArray(value)) {
-          return { valid: false, error: `Label indexes for ${key} must be an array` };
-        }
-        // Validate each index is a number
-        for (const idx of value) {
-          if (typeof idx !== 'number' || idx < 0 || !Number.isInteger(idx)) {
-            return { valid: false, error: `Invalid index in ${key}: ${idx}` };
-          }
+        if (signalData.label_indexes) {
+          const result = validateLabelIndexes(signalData.label_indexes);
+          if (!result.valid) return result;
         }
       }
     }

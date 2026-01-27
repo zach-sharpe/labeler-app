@@ -156,6 +156,12 @@ body {
   gap: 16px;
 }
 
+.active-signal-indicator {
+  font-weight: bold;
+  color: #d62728;
+  font-size: 0.9em;
+}
+
 #patient-id-display {
   font-size: 14px;
   font-weight: 500;
